@@ -1,0 +1,489 @@
+name: Build APK
+
+# 在 GitHub 網站上按 Actions -> Build APK -> Run workflow 即可編譯。
+# 第一次建立這個檔案時也會自動編譯一次。
+on:
+  push:
+    paths:
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null || true
+
+      - name: Write project files
+        run: |
+          mkdir -p app app/src/main app/src/main/java/com/example/sstranslator app/src/main/res/drawable app/src/main/res/values
+          cat > 'app/build.gradle.kts' <<'__SSFILE_EOF__'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.example.sstranslator"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.example.sstranslator"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+              packaging {
+                  resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+              }
+          }
+
+          dependencies {
+              // 日文文字辨識 (模型內建於 APK, 完全離線)
+              implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+              // 離線機器翻譯 (模型第一次需下載, 之後離線可用)
+              implementation("com.google.mlkit:translate:17.0.3")
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/AndroidManifest.xml' <<'__SSFILE_EOF__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+              <application
+                  android:allowBackup="false"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="@string/app_name"
+                  android:theme="@android:style/Theme.DeviceDefault.Light">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".TranslateService"
+                      android:exported="false"
+                      android:foregroundServiceType="mediaProjection" />
+              </application>
+          </manifest>
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/MainActivity.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.Manifest
+          import android.app.Activity
+          import android.content.Context
+          import android.content.Intent
+          import android.media.projection.MediaProjectionManager
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.widget.Button
+          import android.widget.CheckBox
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.TextView
+          import com.google.mlkit.common.model.DownloadConditions
+          import com.google.mlkit.nl.translate.TranslateLanguage
+          import com.google.mlkit.nl.translate.Translation
+          import com.google.mlkit.nl.translate.TranslatorOptions
+
+          class MainActivity : Activity() {
+
+              private val reqCapture = 1001
+              private lateinit var status: TextView
+
+              private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+                  }
+
+                  val root = LinearLayout(this)
+                  root.orientation = LinearLayout.VERTICAL
+                  root.setPadding(dp(16), dp(16), dp(16), dp(16))
+
+                  val title = TextView(this)
+                  title.text = "SS 日文即時翻譯"
+                  title.textSize = 22f
+                  root.addView(title)
+
+                  val intro = TextView(this)
+                  intro.text = "在模擬器玩日文遊戲時,點懸浮的「譯」按鈕,就會把畫面上的日文辨識後翻成繁體中文,顯示在原文位置。\n" +
+                      "辨識與翻譯都在手機本機完成。\n" +
+                      "• 短按「譯」:翻譯目前畫面\n" +
+                      "• 長按「譯」:隱藏譯文\n" +
+                      "• 拖曳「譯」:移動位置"
+                  intro.setPadding(0, dp(8), 0, dp(12))
+                  root.addView(intro)
+
+                  root.addView(makeButton("① 開啟「顯示在其他應用程式上層」權限") { openOverlaySettings() })
+                  root.addView(makeButton("② 下載離線翻譯模型 (只需一次,需要網路)") { downloadModel() })
+
+                  val bottom = CheckBox(this)
+                  bottom.text = "只翻譯畫面下半部 (對話框) — 可減少誤判"
+                  bottom.isChecked = getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("bottom", false)
+                  bottom.setOnCheckedChangeListener { _, checked ->
+                      getSharedPreferences("cfg", Context.MODE_PRIVATE).edit().putBoolean("bottom", checked).apply()
+                  }
+                  root.addView(bottom)
+
+                  root.addView(makeButton("③ 啟動翻譯懸浮按鈕") { startCapture() })
+                  root.addView(makeButton("停止翻譯服務") { stopService() })
+
+                  status = TextView(this)
+                  status.text = "請依序按 ① → ② → ③,然後切換到模擬器遊戲。"
+                  status.setPadding(0, dp(12), 0, 0)
+                  root.addView(status)
+
+                  val sv = ScrollView(this)
+                  sv.addView(root)
+                  setContentView(sv)
+              }
+
+              private fun makeButton(label: String, onClick: () -> Unit): Button {
+                  val b = Button(this)
+                  b.text = label
+                  b.isAllCaps = false
+                  b.setOnClickListener { onClick() }
+                  return b
+              }
+
+              private fun openOverlaySettings() {
+                  if (Settings.canDrawOverlays(this)) {
+                      status.text = "✅ 懸浮窗權限已開啟"
+                      return
+                  }
+                  val i = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
+                  startActivity(i)
+              }
+
+              private fun downloadModel() {
+                  status.text = "下載中… (約 60MB,請保持網路連線,完成前請勿離開)"
+                  val t = Translation.getClient(
+                      TranslatorOptions.Builder()
+                          .setSourceLanguage(TranslateLanguage.JAPANESE)
+                          .setTargetLanguage(TranslateLanguage.CHINESE)
+                          .build()
+                  )
+                  t.downloadModelIfNeeded(DownloadConditions.Builder().build())
+                      .addOnSuccessListener {
+                          status.text = "✅ 翻譯模型已就緒,之後可離線使用"
+                          t.close()
+                      }
+                      .addOnFailureListener { e ->
+                          status.text = "❌ 下載失敗:" + (e.message ?: e.toString())
+                          t.close()
+                      }
+              }
+
+              @Suppress("DEPRECATION")
+              private fun startCapture() {
+                  if (!Settings.canDrawOverlays(this)) {
+                      status.text = "請先完成 ①:開啟懸浮窗權限"
+                      return
+                  }
+                  val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                  startActivityForResult(mpm.createScreenCaptureIntent(), reqCapture)
+              }
+
+              private fun stopService() {
+                  val i = Intent(this, TranslateService::class.java)
+                  i.action = TranslateService.ACTION_STOP
+                  startService(i)
+                  status.text = "已停止"
+              }
+
+              @Deprecated("Deprecated in Java")
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode != reqCapture) return
+                  if (resultCode == RESULT_OK && data != null) {
+                      val i = Intent(this, TranslateService::class.java)
+                      i.putExtra(TranslateService.EXTRA_CODE, resultCode)
+                      i.putExtra(TranslateService.EXTRA_DATA, data)
+                      startForegroundService(i)
+                      status.text = "✅ 已啟動!現在切換到模擬器,畫面上會有藍色「譯」按鈕。"
+                  } else {
+                      status.text = "你取消了螢幕擷取授權"
+                  }
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/ResultView.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Paint
+          import android.graphics.Rect
+          import android.graphics.RectF
+          import android.text.Layout
+          import android.text.StaticLayout
+          import android.text.TextPaint
+          import android.util.TypedValue
+          import android.view.View
+
+          /**
+           * 全螢幕透明疊加層:在原本日文文字的位置畫上翻譯後的繁體中文。
+           * 座標是「螢幕座標」(與螢幕擷取的圖片相同)。
+           */
+          class ResultView(context: Context) : View(context) {
+
+              class Item(val rect: Rect, val text: String, val lineH: Int)
+
+              var items: List<Item> = emptyList()
+
+              private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xE6101820.toInt()
+              }
+              private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFFFFF.toInt()
+              }
+
+              private fun sp(v: Float): Float =
+                  TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
+
+              private fun dp(v: Float): Float =
+                  TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
+
+              private fun makeLayout(text: String, size: Float, width: Int): StaticLayout {
+                  textPaint.textSize = size
+                  return StaticLayout.Builder.obtain(text, 0, text.length, textPaint, width)
+                      .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                      .build()
+              }
+
+              override fun onDraw(canvas: Canvas) {
+                  super.onDraw(canvas)
+                  if (items.isEmpty()) return
+
+                  val loc = IntArray(2)
+                  getLocationOnScreen(loc)
+                  canvas.save()
+                  canvas.translate(-loc[0].toFloat(), -loc[1].toFloat())
+
+                  val screenW = (width + loc[0]).toFloat()
+                  val screenH = (height + loc[1]).toFloat()
+                  val pad = dp(6f)
+                  val minSize = sp(11f)
+                  val maxSize = sp(26f)
+
+                  for (item in items) {
+                      val r = item.rect
+                      val boxW = maxOf(r.width().toFloat(), dp(140f))
+                      val innerW = maxOf(1, (boxW - 2 * pad).toInt())
+
+                      var size = minOf(item.lineH * 0.85f, maxSize)
+                      if (size < minSize) size = minSize
+                      var layout = makeLayout(item.text, size, innerW)
+                      while (layout.height + 2 * pad > r.height() && size > minSize) {
+                          size -= 1f
+                          layout = makeLayout(item.text, size, innerW)
+                      }
+
+                      val boxH = maxOf(r.height().toFloat(), layout.height + 2 * pad)
+                      var left = r.left.toFloat()
+                      var top = r.top.toFloat()
+                      if (left + boxW > screenW) left = screenW - boxW
+                      if (left < 0f) left = 0f
+                      if (top + boxH > screenH) top = screenH - boxH
+                      if (top < 0f) top = 0f
+
+                      canvas.drawRoundRect(RectF(left, top, left + boxW, top + boxH), dp(6f), dp(6f), bgPaint)
+                      canvas.save()
+                      canvas.translate(left + pad, top + pad)
+                      layout.draw(canvas)
+                      canvas.restore()
+                  }
+                  canvas.restore()
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/Traditionalizer.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+          import java.io.IOException
+
+          /**
+           * 簡體 -> 繁體(台灣用詞) 離線轉換。
+           * 使用 OpenCC 字典 (assets/opencc/*.txt),做法等同 OpenCC 的 s2twp:
+           *   1) TSPhrases + TSCharacters  簡 -> 繁
+           *   2) TWPhrases*                 詞彙改成台灣用語 (軟件 -> 軟體)
+           *   3) TWVariants                 異體字 (裏 -> 裡)
+           * 每一階段都用「最長詞優先」比對。
+           */
+          object Traditionalizer {
+
+              private class Dict(val map: HashMap<String, String>, val maxLen: Int)
+
+              @Volatile
+              private var stages: List<Dict>? = null
+
+              @Synchronized
+              fun load(ctx: Context) {
+                  if (stages != null) return
+                  stages = listOf(
+                      loadDicts(ctx, listOf("TSCharacters.txt", "TSPhrases.txt")),
+                      loadDicts(
+                          ctx,
+                          listOf("TWPhrasesIT.txt", "TWPhrasesName.txt", "TWPhrasesOther.txt", "TWPhrases.txt")
+                      ),
+                      loadDicts(ctx, listOf("TWVariants.txt"))
+                  )
+              }
+
+              private fun loadDicts(ctx: Context, names: List<String>): Dict {
+                  val map = HashMap<String, String>()
+                  var maxLen = 1
+                  for (name in names) {
+                      try {
+                          ctx.assets.open("opencc/" + name).bufferedReader(Charsets.UTF_8).useLines { lines ->
+                              for (line in lines) {
+                                  if (line.isEmpty() || line.startsWith("#")) continue
+                                  val tab = line.indexOf('\t')
+                                  if (tab <= 0) continue
+                                  val key = line.substring(0, tab)
+                                  val value = line.substring(tab + 1).trim().split(' ', '\t').firstOrNull()
+                                  if (value.isNullOrEmpty()) continue
+                                  map[key] = value
+                                  if (key.length > maxLen) maxLen = key.length
+                              }
+                          }
+                      } catch (e: IOException) {
+                          // 該字典檔不存在就略過
+                      }
+                  }
+                  return Dict(map, maxLen)
+              }
+
+              fun convert(text: String): String {
+                  val st = stages ?: return text
+                  var s = text
+                  for (d in st) {
+                      s = apply(d, s)
+                  }
+                  return s
+              }
+
+              private fun apply(d: Dict, s: String): String {
+                  if (d.map.isEmpty()) return s
+                  val sb = StringBuilder(s.length)
+                  val n = s.length
+                  var i = 0
+                  while (i < n) {
+                      var len = minOf(d.maxLen, n - i)
+                      var matched = false
+                      while (len > 0) {
+                          val v = d.map[s.substring(i, i + len)]
+                          if (v != null) {
+                              sb.append(v)
+                              i += len
+                              matched = true
+                              break
+                          }
+                          len--
+                      }
+                      if (!matched) {
+                          sb.append(s[i])
+                          i++
+                      }
+                  }
+                  return sb.toString()
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/TranslateService.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.app.Service
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
+          import android.graphics.Bitmap
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.graphics.Rect
+          import android.graphics.drawable.GradientDrawable
+          import android.hardware.display.DisplayManager
+          import android.hardware.display.VirtualDisplay
+          import android.media.ImageReader
+          import android.media.projection.MediaProjection
+          import android.media.projection.MediaProjectionManager
+          import android.os.Build
+          import android.os.Handler
+          import android.os.HandlerThread
+          import android.os.IBinder
+          import android.os.Looper
+          import android.util.DisplayMetrics
+          import android.view.Display
+          import android.view.Gravity
+          import android.view.MotionEvent
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.TextView
+          import android.widget.Toast
+          import com.google.android.gms.tasks.Tasks
+          import com.google.mlkit.common.model.DownloadConditions
+          import com.google.mlkit.nl.translate.TranslateLanguage
+          import com.google.mlkit.nl.translate.Translation
+          import com.google.mlkit.nl.translate.Translator
+          import com.google.mlkit.nl.translate.TranslatorOptions
+          import com.google.mlkit.vision.common.InputImage
+          import com.google.mlkit.vision.text.TextRecognition
+          import com.google.mlkit.vision.text.TextRecog
