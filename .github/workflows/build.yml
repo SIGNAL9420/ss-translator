@@ -357,7 +357,7 @@ jobs:
 
           /**
            * 簡體 -> 繁體(台灣用詞) 離線轉換。
-           * 使用 OpenCC 字典 (assets/opencc/*.txt),做法等同 OpenCC 的 s2twp:
+           * 使用 OpenCC 字典 (assets 裡的 opencc 資料夾),做法等同 OpenCC 的 s2twp:
            *   1) TSPhrases + TSCharacters  簡 -> 繁
            *   2) TWPhrases*                 詞彙改成台灣用語 (軟件 -> 軟體)
            *   3) TWVariants                 異體字 (裏 -> 裡)
