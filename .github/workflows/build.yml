@@ -125,8 +125,7 @@ jobs:
           import android.os.Bundle
           import android.provider.Settings
           import android.widget.Button
-          import android.widget.RadioButton
-          import android.widget.RadioGroup
+          import android.widget.SeekBar
           import android.widget.LinearLayout
           import android.widget.ScrollView
           import android.widget.TextView
@@ -170,29 +169,13 @@ jobs:
                   root.addView(makeButton("① 開啟「顯示在其他應用程式上層」權限") { openOverlaySettings() })
                   root.addView(makeButton("② 下載離線翻譯模型 (只需一次,需要網路)") { downloadModel() })
 
-                  val regionTitle = TextView(this)
-                  regionTitle.text = "要翻譯畫面的哪個部分?"
-                  regionTitle.setPadding(0, dp(12), 0, 0)
-                  root.addView(regionTitle)
                   val cfg = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  val cur = cfg.getString("region", "top")
-                  val rg = RadioGroup(this)
-                  rg.orientation = LinearLayout.VERTICAL
-                  val opts = listOf(
-                      Pair("top", "上半部 (直式模擬器,遊戲畫面在上方)"),
-                      Pair("full", "全螢幕"),
-                      Pair("bottom", "下半部")
-                  )
-                  for (i in opts.indices) {
-                      val rb = RadioButton(this)
-                      rb.id = 2000 + i
-                      rb.text = opts[i].second
-                      rb.isChecked = (opts[i].first == cur)
-                      val key = opts[i].first
-                      rb.setOnClickListener { cfg.edit().putString("region", key).apply() }
-                      rg.addView(rb)
-                  }
-                  root.addView(rg)
+                  val tip = TextView(this)
+                  tip.text = "翻譯範圍 (數字是畫面高度的百分比)。把上緣、下緣調到剛好框住遊戲的對話框,可避免翻到選單、日期等雜訊。"
+                  tip.setPadding(0, dp(12), 0, 0)
+                  root.addView(tip)
+                  root.addView(makeSlider("上緣", "top", 18, cfg))
+                  root.addView(makeSlider("下緣", "bot", 34, cfg))
 
                   root.addView(makeButton("③ 啟動翻譯懸浮按鈕") { startCapture() })
                   root.addView(makeButton("停止翻譯服務") { stopService() })
@@ -202,9 +185,44 @@ jobs:
                   status.setPadding(0, dp(12), 0, 0)
                   root.addView(status)
 
+                  val dict = TextView(this)
+                  dict.text = "字典載入中…"
+                  dict.setPadding(0, dp(8), 0, 0)
+                  root.addView(dict)
+                  Thread {
+                      Traditionalizer.load(applicationContext)
+                      val st = Traditionalizer.status()
+                      runOnUiThread { dict.text = st }
+                  }.start()
+
                   val sv = ScrollView(this)
                   sv.addView(root)
                   setContentView(sv)
+              }
+
+              private fun makeSlider(label: String, key: String, def: Int, cfg: android.content.SharedPreferences): LinearLayout {
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  val tv = TextView(this)
+                  val sb = SeekBar(this)
+                  sb.max = 100
+                  val cur = cfg.getInt(key, def)
+                  sb.progress = cur
+                  tv.text = label + " " + cur + "%"
+                  tv.setPadding(0, dp(8), 0, 0)
+                  sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                      override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                          tv.text = label + " " + p + "%"
+                          cfg.edit().putInt(key, p).apply()
+                      }
+
+                      override fun onStartTrackingTouch(s: SeekBar?) {}
+
+                      override fun onStopTrackingTouch(s: SeekBar?) {}
+                  })
+                  box.addView(tv)
+                  box.addView(sb)
+                  return box
               }
 
               private fun makeButton(label: String, onClick: () -> Unit): Button {
@@ -424,8 +442,33 @@ jobs:
                   return Dict(map, maxLen)
               }
 
+              // 備用:如果字典沒載入,改用 Android 內建的 ICU 簡轉繁 (只有逐字轉換)
+              private val icu: android.icu.text.Transliterator? by lazy {
+                  try {
+                      android.icu.text.Transliterator.getInstance("Hans-Hant")
+                  } catch (e: Exception) {
+                      null
+                  }
+              }
+
+              private fun icuConvert(s: String): String {
+                  val tr = icu ?: return s
+                  return try {
+                      tr.transliterate(s)
+                  } catch (e: Exception) {
+                      s
+                  }
+              }
+
+              fun status(): String {
+                  val st = stages ?: return "字典:尚未載入"
+                  return "簡繁字典 " + st[0].map.size + " 筆 / 台灣用語 " + st[1].map.size + " 筆" +
+                      (if (st[0].map.isEmpty()) " (字典是空的,改用內建簡轉繁)" else "")
+              }
+
               fun convert(text: String): String {
-                  val st = stages ?: return text
+                  val st = stages ?: return icuConvert(text)
+                  if (st[0].map.isEmpty()) return icuConvert(text)
                   var s = text
                   for (d in st) {
                       s = apply(d, s)
@@ -509,6 +552,7 @@ jobs:
           import com.google.mlkit.vision.text.TextRecognizer
           import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
           import java.util.concurrent.Executors
+          import java.util.concurrent.TimeUnit
           import java.util.concurrent.atomic.AtomicBoolean
 
           class TranslateService : Service() {
@@ -875,7 +919,7 @@ jobs:
                       ui.post {
                           val list = result.getOrNull()
                           if (list == null) {
-                              done("翻譯失敗:" + (result.exceptionOrNull()?.message ?: "未知錯誤"))
+                              done("翻譯失敗:" + (result.exceptionOrNull()?.message ?: result.exceptionOrNull()?.toString() ?: "未知錯誤"))
                           } else if (list.isEmpty()) {
                               done("沒有辨識到日文" + (if (lastRaw.length > 6) "\n讀到:" + lastRaw.take(60) else ""))
                           } else {
@@ -890,15 +934,13 @@ jobs:
 
               private fun process(full: Bitmap): List<ResultView.Item> {
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  val region = prefs.getString("region", "top") ?: "top"
-                  var topOffset = 0
-                  var cropH = full.height
-                  if (region == "top") {
-                      cropH = full.height / 2
-                  } else if (region == "bottom") {
-                      topOffset = full.height / 2
-                      cropH = full.height - topOffset
-                  }
+                  val topPct = minOf(90, prefs.getInt("top", 18))
+                  val botPct = prefs.getInt("bot", 34)
+                  val topOffset = (full.height.toLong() * topPct / 100).toInt()
+                  var bottom = (full.height.toLong() * botPct / 100).toInt()
+                  if (bottom < topOffset + 40) bottom = topOffset + 40
+                  if (bottom > full.height) bottom = full.height
+                  val cropH = bottom - topOffset
                   val src = if (cropH != full.height) {
                       Bitmap.createBitmap(full, 0, topOffset, full.width, cropH)
                   } else {
@@ -909,7 +951,7 @@ jobs:
                   val rec = recognizer ?: throw IllegalStateException("recognizer")
 
                   try {
-                      Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()))
+                      Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()), 90, TimeUnit.SECONDS)
                   } catch (e: Exception) {
                       throw IllegalStateException("尚未下載翻譯模型,請回主畫面按「②」")
                   }
@@ -922,12 +964,16 @@ jobs:
 
                   val raw = StringBuilder()
                   val blocks = ArrayList<Blk>()
+                  var step = 0
                   try {
                       for (v in variants) {
+                          step++
+                          val stepNow = step
+                          ui.post { setLabel(stepNow.toString() + "/3") }
                           val bmp = v.first
                           val scale = v.second
                           val text = try {
-                              Tasks.await(rec.process(InputImage.fromBitmap(bmp, 0)))
+                              Tasks.await(rec.process(InputImage.fromBitmap(bmp, 0)), 40, TimeUnit.SECONDS)
                           } catch (e: Exception) {
                               null
                           }
@@ -955,8 +1001,9 @@ jobs:
                   lastRaw = raw.toString()
 
                   val out = ArrayList<ResultView.Item>()
+                  ui.post { setLabel("譯") }
                   for (m in merge(blocks)) {
-                      val zh = Tasks.await(tr.translate(m.text))
+                      val zh = Tasks.await(tr.translate(m.text), 40, TimeUnit.SECONDS)
                       out.add(ResultView.Item(m.rect, Traditionalizer.convert(zh), m.lineH))
                   }
                   return out
@@ -1018,30 +1065,52 @@ jobs:
                   list.add(b)
               }
 
-              // 把上下相鄰、靠左對齊的區塊合併成一句,翻譯會比較通順
+              // 把同一段對話的碎片合併成一句:由上到下分群,同一行的由左到右接起來
               private fun merge(list: List<Blk>): List<Blk> {
-                  val sorted = list.sortedWith(compareBy<Blk>({ it.rect.top }, { it.rect.left }))
-                  val out = ArrayList<Blk>()
+                  val sorted = list.sortedBy { it.rect.top }
+                  val groups = ArrayList<ArrayList<Blk>>()
                   for (b in sorted) {
-                      val target = out.lastOrNull { o -> canMerge(o, b) }
-                      if (target != null) {
-                          target.text = target.text + b.text
-                          target.rect.union(b.rect)
-                      } else {
-                          out.add(Blk(Rect(b.rect), b.text, b.lineH))
+                      val g = groups.lastOrNull()
+                      if (g != null) {
+                          var bottom = 0
+                          for (x in g) {
+                              if (x.rect.bottom > bottom) bottom = x.rect.bottom
+                          }
+                          if (b.rect.top - bottom <= g[0].lineH) {
+                              g.add(b)
+                              continue
+                          }
                       }
+                      val ng = ArrayList<Blk>()
+                      ng.add(b)
+                      groups.add(ng)
+                  }
+                  val out = ArrayList<Blk>()
+                  for (g in groups) {
+                      val rows = ArrayList<ArrayList<Blk>>()
+                      for (b in g.sortedBy { it.rect.top }) {
+                          val row = rows.lastOrNull { r ->
+                              Math.abs(r[0].rect.centerY() - b.rect.centerY()) <= maxOf(r[0].lineH, b.lineH) / 2
+                          }
+                          if (row != null) {
+                              row.add(b)
+                          } else {
+                              val nr = ArrayList<Blk>()
+                              nr.add(b)
+                              rows.add(nr)
+                          }
+                      }
+                      val sb = StringBuilder()
+                      val rect = Rect(g[0].rect)
+                      for (row in rows) {
+                          for (b in row.sortedBy { it.rect.left }) {
+                              sb.append(b.text)
+                              rect.union(b.rect)
+                          }
+                      }
+                      out.add(Blk(rect, sb.toString(), g[0].lineH))
                   }
                   return out
-              }
-
-              private fun canMerge(a: Blk, b: Blk): Boolean {
-                  val gap = b.rect.top - a.rect.bottom
-                  val overlapX = minOf(a.rect.right, b.rect.right) - maxOf(a.rect.left, b.rect.left)
-                  return a.rect.width() >= a.lineH * 6 &&
-                      overlapX > 0 &&
-                      gap <= a.lineH &&
-                      gap >= -(a.lineH / 2) &&
-                      Math.abs(a.rect.left - b.rect.left) <= a.lineH * 2
               }
 
               // ---------------------------------------------------------------- 顯示譯文
