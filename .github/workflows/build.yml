@@ -125,7 +125,8 @@ jobs:
           import android.os.Bundle
           import android.provider.Settings
           import android.widget.Button
-          import android.widget.CheckBox
+          import android.widget.RadioButton
+          import android.widget.RadioGroup
           import android.widget.LinearLayout
           import android.widget.ScrollView
           import android.widget.TextView
@@ -169,13 +170,29 @@ jobs:
                   root.addView(makeButton("① 開啟「顯示在其他應用程式上層」權限") { openOverlaySettings() })
                   root.addView(makeButton("② 下載離線翻譯模型 (只需一次,需要網路)") { downloadModel() })
 
-                  val bottom = CheckBox(this)
-                  bottom.text = "只翻譯畫面下半部 (對話框) — 可減少誤判"
-                  bottom.isChecked = getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("bottom", false)
-                  bottom.setOnCheckedChangeListener { _, checked ->
-                      getSharedPreferences("cfg", Context.MODE_PRIVATE).edit().putBoolean("bottom", checked).apply()
+                  val regionTitle = TextView(this)
+                  regionTitle.text = "要翻譯畫面的哪個部分?"
+                  regionTitle.setPadding(0, dp(12), 0, 0)
+                  root.addView(regionTitle)
+                  val cfg = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val cur = cfg.getString("region", "top")
+                  val rg = RadioGroup(this)
+                  rg.orientation = LinearLayout.VERTICAL
+                  val opts = listOf(
+                      Pair("top", "上半部 (直式模擬器,遊戲畫面在上方)"),
+                      Pair("full", "全螢幕"),
+                      Pair("bottom", "下半部")
+                  )
+                  for (i in opts.indices) {
+                      val rb = RadioButton(this)
+                      rb.id = 2000 + i
+                      rb.text = opts[i].second
+                      rb.isChecked = (opts[i].first == cur)
+                      val key = opts[i].first
+                      rb.setOnClickListener { cfg.edit().putString("region", key).apply() }
+                      rg.addView(rb)
                   }
-                  root.addView(bottom)
+                  root.addView(rg)
 
                   root.addView(makeButton("③ 啟動翻譯懸浮按鈕") { startCapture() })
                   root.addView(makeButton("停止翻譯服務") { stopService() })
@@ -455,6 +472,10 @@ jobs:
           import android.content.Intent
           import android.content.pm.ServiceInfo
           import android.graphics.Bitmap
+          import android.graphics.Canvas
+          import android.graphics.ColorMatrix
+          import android.graphics.ColorMatrixColorFilter
+          import android.graphics.Paint
           import android.graphics.Color
           import android.graphics.PixelFormat
           import android.graphics.Rect
@@ -524,6 +545,8 @@ jobs:
               private var translator: Translator? = null
 
               private var busy = false
+              @Volatile
+              private var lastRaw = ""
               private val wantFrame = AtomicBoolean(false)
 
               // 畫面靜止時 (沒有新影格) 的補救措施
@@ -854,7 +877,7 @@ jobs:
                           if (list == null) {
                               done("翻譯失敗:" + (result.exceptionOrNull()?.message ?: "未知錯誤"))
                           } else if (list.isEmpty()) {
-                              done("沒有辨識到日文")
+                              done("沒有辨識到日文" + (if (lastRaw.length > 6) "\n讀到:" + lastRaw.take(60) else ""))
                           } else {
                               showResult(list)
                               done(null)
@@ -867,9 +890,17 @@ jobs:
 
               private fun process(full: Bitmap): List<ResultView.Item> {
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  val topOffset = if (prefs.getBoolean("bottom", false)) full.height / 2 else 0
-                  val src = if (topOffset > 0) {
-                      Bitmap.createBitmap(full, 0, topOffset, full.width, full.height - topOffset)
+                  val region = prefs.getString("region", "top") ?: "top"
+                  var topOffset = 0
+                  var cropH = full.height
+                  if (region == "top") {
+                      cropH = full.height / 2
+                  } else if (region == "bottom") {
+                      topOffset = full.height / 2
+                      cropH = full.height - topOffset
+                  }
+                  val src = if (cropH != full.height) {
+                      Bitmap.createBitmap(full, 0, topOffset, full.width, cropH)
                   } else {
                       full
                   }
@@ -883,22 +914,45 @@ jobs:
                       throw IllegalStateException("尚未下載翻譯模型,請回主畫面按「②」")
                   }
 
-                  val text = try {
-                      Tasks.await(rec.process(InputImage.fromBitmap(src, 0)))
-                  } finally {
-                      if (src !== full) src.recycle()
-                  }
+                  // 同一張畫面做三種版本:原圖、放大加強對比、放大反相加強對比
+                  val variants = ArrayList<Pair<Bitmap, Float>>()
+                  variants.add(Pair(src, 1f))
+                  variants.add(Pair(enhance(src, 2f, 1.8f), 2f))
+                  variants.add(Pair(enhance(src, 2f, -1.8f), 2f))
 
+                  val raw = StringBuilder()
                   val blocks = ArrayList<Blk>()
-                  for (b in text.textBlocks) {
-                      val box = b.boundingBox ?: continue
-                      val jp = b.lines.joinToString("") { it.text }.replace(" ", "").replace("　", "")
-                      if (!JP.containsMatchIn(jp)) continue
-                      val r = Rect(box)
-                      r.offset(0, topOffset)
-                      val lineCount = maxOf(1, b.lines.size)
-                      blocks.add(Blk(r, jp, maxOf(1, r.height() / lineCount)))
+                  try {
+                      for (v in variants) {
+                          val bmp = v.first
+                          val scale = v.second
+                          val text = try {
+                              Tasks.await(rec.process(InputImage.fromBitmap(bmp, 0)))
+                          } catch (e: Exception) {
+                              null
+                          }
+                          if (text == null) continue
+                          raw.append(text.text.replace("\n", " ")).append(" | ")
+                          for (b in text.textBlocks) {
+                              val box = b.boundingBox ?: continue
+                              val jp = b.lines.joinToString("") { it.text }.replace(" ", "").replace("\u3000", "")
+                              if (!isJapanese(jp)) continue
+                              val r = Rect(
+                                  (box.left / scale).toInt(),
+                                  (box.top / scale).toInt() + topOffset,
+                                  (box.right / scale).toInt(),
+                                  (box.bottom / scale).toInt() + topOffset
+                              )
+                              val lineCount = maxOf(1, b.lines.size)
+                              addBlock(blocks, Blk(r, jp, maxOf(1, r.height() / lineCount)))
+                          }
+                      }
+                  } finally {
+                      for (v in variants) {
+                          if (v.first !== full) v.first.recycle()
+                      }
                   }
+                  lastRaw = raw.toString()
 
                   val out = ArrayList<ResultView.Item>()
                   for (m in merge(blocks)) {
@@ -906,6 +960,62 @@ jobs:
                       out.add(ResultView.Item(m.rect, Traditionalizer.convert(zh), m.lineH))
                   }
                   return out
+              }
+
+              private fun enhance(src: Bitmap, scale: Float, contrast: Float): Bitmap {
+                  val w = (src.width * scale).toInt()
+                  val h = (src.height * scale).toInt()
+                  val scaled = Bitmap.createScaledBitmap(src, w, h, true)
+                  val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  val cm = ColorMatrix()
+                  cm.setSaturation(0f)
+                  val t = 128f * (1f - contrast)
+                  cm.postConcat(
+                      ColorMatrix(
+                          floatArrayOf(
+                              contrast, 0f, 0f, 0f, t,
+                              0f, contrast, 0f, 0f, t,
+                              0f, 0f, contrast, 0f, t,
+                              0f, 0f, 0f, 1f, 0f
+                          )
+                      )
+                  )
+                  val p = Paint(Paint.FILTER_BITMAP_FLAG)
+                  p.colorFilter = ColorMatrixColorFilter(cm)
+                  Canvas(out).drawBitmap(scaled, 0f, 0f, p)
+                  if (scaled !== src) scaled.recycle()
+                  return out
+              }
+
+              private fun isJapanese(s: String): Boolean {
+                  var n = 0
+                  for (c in s) {
+                      if (c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF') n++
+                  }
+                  return n >= 2
+              }
+
+              // 不同版本辨識到同一個位置的文字只留一份 (留比較長的)
+              private fun addBlock(list: ArrayList<Blk>, b: Blk) {
+                  for (o in list) {
+                      val ix = minOf(o.rect.right, b.rect.right) - maxOf(o.rect.left, b.rect.left)
+                      val iy = minOf(o.rect.bottom, b.rect.bottom) - maxOf(o.rect.top, b.rect.top)
+                      if (ix > 0 && iy > 0) {
+                          val inter = ix.toLong() * iy
+                          val minArea = minOf(
+                              o.rect.width().toLong() * o.rect.height(),
+                              b.rect.width().toLong() * b.rect.height()
+                          )
+                          if (minArea > 0 && inter * 2 > minArea) {
+                              if (b.text.length > o.text.length) {
+                                  o.text = b.text
+                                  o.rect.set(b.rect)
+                              }
+                              return
+                          }
+                      }
+                  }
+                  list.add(b)
               }
 
               // 把上下相鄰、靠左對齊的區塊合併成一句,翻譯會比較通順
