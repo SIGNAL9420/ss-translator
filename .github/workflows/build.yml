@@ -4,8 +4,7 @@ name: Build APK
 # 第一次建立這個檔案時也會自動編譯一次。
 on:
   push:
-    paths:
-      - '.github/workflows/build.yml'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -486,4 +485,634 @@ jobs:
           import com.google.mlkit.nl.translate.TranslatorOptions
           import com.google.mlkit.vision.common.InputImage
           import com.google.mlkit.vision.text.TextRecognition
-          import com.google.mlkit.vision.text.TextRecog
+          import com.google.mlkit.vision.text.TextRecognizer
+          import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
+          import java.util.concurrent.Executors
+          import java.util.concurrent.atomic.AtomicBoolean
+
+          class TranslateService : Service() {
+
+              companion object {
+                  const val EXTRA_CODE = "code"
+                  const val EXTRA_DATA = "data"
+                  const val ACTION_STOP = "com.example.sstranslator.STOP"
+                  private const val CHANNEL_ID = "ss_translate"
+                  private const val NOTIF_ID = 1
+                  private val JP = Regex("[\\u3040-\\u30FF\\u4E00-\\u9FFF]")
+              }
+
+              private class Blk(val rect: Rect, var text: String, val lineH: Int)
+
+              private val ui = Handler(Looper.getMainLooper())
+              private val worker = Executors.newSingleThreadExecutor()
+              private lateinit var bgThread: HandlerThread
+              private lateinit var bgHandler: Handler
+              private lateinit var wm: WindowManager
+
+              private var projection: MediaProjection? = null
+              private var virtualDisplay: VirtualDisplay? = null
+              private var imageReader: ImageReader? = null
+              private var capW = 0
+              private var capH = 0
+              private var capDpi = 0
+
+              private var button: TextView? = null
+              private var buttonLp: WindowManager.LayoutParams? = null
+              private var overlay: ResultView? = null
+
+              private var recognizer: TextRecognizer? = null
+              private var translator: Translator? = null
+
+              private var busy = false
+              private val wantFrame = AtomicBoolean(false)
+
+              // 畫面靜止時 (沒有新影格) 的補救措施
+              private val kick = Runnable {
+                  if (wantFrame.get()) {
+                      try {
+                          recreateReader()
+                      } catch (e: Exception) {
+                          // 忽略,等 giveUp 處理
+                      }
+                  }
+              }
+              private val giveUp = Runnable {
+                  if (wantFrame.compareAndSet(true, false)) {
+                      done("抓不到畫面,請再按一次")
+                  }
+              }
+
+              private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+              private fun toast(msg: String) {
+                  Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+              }
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onCreate() {
+                  super.onCreate()
+                  wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                  bgThread = HandlerThread("ss-capture")
+                  bgThread.start()
+                  bgHandler = Handler(bgThread.looper)
+                  recognizer = TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
+                  translator = Translation.getClient(
+                      TranslatorOptions.Builder()
+                          .setSourceLanguage(TranslateLanguage.JAPANESE)
+                          .setTargetLanguage(TranslateLanguage.CHINESE)
+                          .build()
+                  )
+                  worker.execute { Traditionalizer.load(applicationContext) }
+              }
+
+              @Suppress("DEPRECATION")
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (intent != null && intent.action == ACTION_STOP) {
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  if (projection != null) return START_NOT_STICKY
+
+                  createChannel()
+                  val notif = buildNotification()
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                  } else {
+                      startForeground(NOTIF_ID, notif)
+                  }
+
+                  val code = intent?.getIntExtra(EXTRA_CODE, 0) ?: 0
+                  val data = intent?.getParcelableExtra<Intent>(EXTRA_DATA)
+                  if (data == null) {
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+
+                  val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                  val p: MediaProjection? = try {
+                      mpm.getMediaProjection(code, data)
+                  } catch (e: Exception) {
+                      null
+                  }
+                  if (p == null) {
+                      toast("無法取得螢幕擷取權限")
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  p.registerCallback(object : MediaProjection.Callback() {
+                      override fun onStop() {
+                          ui.post { stopSelf() }
+                      }
+                  }, ui)
+                  projection = p
+
+                  addButton()
+                  toast("翻譯按鈕已啟動")
+                  return START_NOT_STICKY
+              }
+
+              private fun createChannel() {
+                  val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  nm.createNotificationChannel(
+                      NotificationChannel(CHANNEL_ID, "翻譯服務", NotificationManager.IMPORTANCE_LOW)
+                  )
+              }
+
+              @Suppress("DEPRECATION")
+              private fun buildNotification(): Notification {
+                  val stopIntent = Intent(this, TranslateService::class.java)
+                  stopIntent.action = ACTION_STOP
+                  val stopPi = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+                  return Notification.Builder(this, CHANNEL_ID)
+                      .setContentTitle("日文翻譯執行中")
+                      .setContentText("下拉通知按「停止」可關閉懸浮按鈕")
+                      .setSmallIcon(android.R.drawable.ic_menu_edit)
+                      .addAction(android.R.drawable.ic_delete, "停止", stopPi)
+                      .setOngoing(true)
+                      .build()
+              }
+
+              // ---------------------------------------------------------------- 懸浮按鈕
+
+              private fun addButton() {
+                  val size = dp(54)
+                  val bg = GradientDrawable()
+                  bg.shape = GradientDrawable.OVAL
+                  bg.setColor(0xCC1E88E5.toInt())
+
+                  val tv = TextView(this)
+                  tv.text = "譯"
+                  tv.textSize = 22f
+                  tv.gravity = Gravity.CENTER
+                  tv.setTextColor(Color.WHITE)
+                  tv.background = bg
+
+                  val lp = WindowManager.LayoutParams(
+                      size,
+                      size,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  lp.x = dp(8)
+                  lp.y = dp(160)
+
+                  var downX = 0f
+                  var downY = 0f
+                  var startX = 0
+                  var startY = 0
+                  var dragging = false
+                  var downTime = 0L
+
+                  tv.setOnTouchListener { _, e ->
+                      when (e.action) {
+                          MotionEvent.ACTION_DOWN -> {
+                              downX = e.rawX
+                              downY = e.rawY
+                              startX = lp.x
+                              startY = lp.y
+                              dragging = false
+                              downTime = e.eventTime
+                          }
+                          MotionEvent.ACTION_MOVE -> {
+                              val dx = e.rawX - downX
+                              val dy = e.rawY - downY
+                              if (!dragging && (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8))) {
+                                  dragging = true
+                              }
+                              if (dragging) {
+                                  lp.x = startX + dx.toInt()
+                                  lp.y = startY + dy.toInt()
+                                  try {
+                                      wm.updateViewLayout(tv, lp)
+                                  } catch (ex: Exception) {
+                                      // ignore
+                                  }
+                              }
+                          }
+                          MotionEvent.ACTION_UP -> {
+                              if (!dragging) {
+                                  if (e.eventTime - downTime > 600) {
+                                      hideOverlay()
+                                  } else {
+                                      startCapture()
+                                  }
+                              }
+                          }
+                      }
+                      true
+                  }
+
+                  wm.addView(tv, lp)
+                  button = tv
+                  buttonLp = lp
+              }
+
+              private fun setLabel(s: String) {
+                  button?.text = s
+              }
+
+              private fun hideOverlay() {
+                  val v = overlay ?: return
+                  v.items = emptyList()
+                  v.invalidate()
+              }
+
+              // ---------------------------------------------------------------- 擷取畫面
+
+              @Suppress("DEPRECATION")
+              private fun readMetrics(): IntArray {
+                  val m = DisplayMetrics()
+                  val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                  dm.getDisplay(Display.DEFAULT_DISPLAY).getRealMetrics(m)
+                  return intArrayOf(m.widthPixels, m.heightPixels, m.densityDpi)
+              }
+
+              private fun newReader(w: Int, h: Int): ImageReader {
+                  val r = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+                  r.setOnImageAvailableListener({ reader ->
+                      val img = try {
+                          reader.acquireLatestImage()
+                      } catch (e: Exception) {
+                          null
+                      }
+                      if (img != null) {
+                          try {
+                              if (wantFrame.compareAndSet(true, false)) {
+                                  val plane = img.planes[0]
+                                  val pixelStride = plane.pixelStride
+                                  val rowPadding = plane.rowStride - pixelStride * img.width
+                                  val wide = Bitmap.createBitmap(
+                                      img.width + rowPadding / pixelStride,
+                                      img.height,
+                                      Bitmap.Config.ARGB_8888
+                                  )
+                                  wide.copyPixelsFromBuffer(plane.buffer)
+                                  val bmp = if (rowPadding == 0) {
+                                      wide
+                                  } else {
+                                      val cropped = Bitmap.createBitmap(wide, 0, 0, img.width, img.height)
+                                      wide.recycle()
+                                      cropped
+                                  }
+                                  ui.post { onFrame(bmp) }
+                              }
+                          } catch (e: Exception) {
+                              ui.post { done("擷取失敗:" + (e.message ?: e.toString())) }
+                          } finally {
+                              img.close()
+                          }
+                      }
+                  }, bgHandler)
+                  return r
+              }
+
+              private fun ensureDisplay() {
+                  val p = projection ?: throw IllegalStateException("projection")
+                  val mt = readMetrics()
+                  val w = mt[0]
+                  val h = mt[1]
+                  val dpi = mt[2]
+                  val vd = virtualDisplay
+                  if (vd == null) {
+                      val r = newReader(w, h)
+                      imageReader = r
+                      virtualDisplay = p.createVirtualDisplay(
+                          "ss-translate", w, h, dpi,
+                          DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                          r.surface, null, null
+                      )
+                      capW = w
+                      capH = h
+                      capDpi = dpi
+                  } else if (w != capW || h != capH) {
+                      // 螢幕轉向了:調整虛擬螢幕大小
+                      val old = imageReader
+                      val r = newReader(w, h)
+                      imageReader = r
+                      vd.resize(w, h, dpi)
+                      vd.setSurface(r.surface)
+                      old?.close()
+                      capW = w
+                      capH = h
+                      capDpi = dpi
+                  }
+              }
+
+              private fun recreateReader() {
+                  val vd = virtualDisplay ?: return
+                  val old = imageReader
+                  val r = newReader(capW, capH)
+                  imageReader = r
+                  vd.setSurface(r.surface)
+                  old?.close()
+              }
+
+              private fun startCapture() {
+                  if (busy) return
+                  busy = true
+                  setLabel("…")
+                  overlay?.visibility = View.INVISIBLE
+                  button?.visibility = View.INVISIBLE
+                  // 等一下讓疊加層真的消失,畫面才不會拍到譯文/按鈕
+                  ui.postDelayed({
+                      try {
+                          ensureDisplay()
+                      } catch (e: Exception) {
+                          done("無法擷取畫面:" + (e.message ?: e.toString()))
+                          return@postDelayed
+                      }
+                      wantFrame.set(true)
+                      ui.postDelayed(kick, 700)
+                      ui.postDelayed(giveUp, 2800)
+                  }, 250)
+              }
+
+              private fun done(msg: String?) {
+                  button?.visibility = View.VISIBLE
+                  overlay?.visibility = View.VISIBLE
+                  setLabel("譯")
+                  busy = false
+                  if (msg != null) toast(msg)
+              }
+
+              private fun onFrame(bmp: Bitmap) {
+                  ui.removeCallbacks(kick)
+                  ui.removeCallbacks(giveUp)
+                  button?.visibility = View.VISIBLE
+                  worker.execute {
+                      val result = try {
+                          Result.success(process(bmp))
+                      } catch (e: Exception) {
+                          Result.failure<List<ResultView.Item>>(e)
+                      }
+                      bmp.recycle()
+                      ui.post {
+                          val list = result.getOrNull()
+                          if (list == null) {
+                              done("翻譯失敗:" + (result.exceptionOrNull()?.message ?: "未知錯誤"))
+                          } else if (list.isEmpty()) {
+                              done("沒有辨識到日文")
+                          } else {
+                              showResult(list)
+                              done(null)
+                          }
+                      }
+                  }
+              }
+
+              // ---------------------------------------------------------------- 辨識 + 翻譯
+
+              private fun process(full: Bitmap): List<ResultView.Item> {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val topOffset = if (prefs.getBoolean("bottom", false)) full.height / 2 else 0
+                  val src = if (topOffset > 0) {
+                      Bitmap.createBitmap(full, 0, topOffset, full.width, full.height - topOffset)
+                  } else {
+                      full
+                  }
+
+                  val tr = translator ?: throw IllegalStateException("translator")
+                  val rec = recognizer ?: throw IllegalStateException("recognizer")
+
+                  try {
+                      Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()))
+                  } catch (e: Exception) {
+                      throw IllegalStateException("尚未下載翻譯模型,請回主畫面按「②」")
+                  }
+
+                  val text = try {
+                      Tasks.await(rec.process(InputImage.fromBitmap(src, 0)))
+                  } finally {
+                      if (src !== full) src.recycle()
+                  }
+
+                  val blocks = ArrayList<Blk>()
+                  for (b in text.textBlocks) {
+                      val box = b.boundingBox ?: continue
+                      val jp = b.lines.joinToString("") { it.text }.replace(" ", "").replace("　", "")
+                      if (!JP.containsMatchIn(jp)) continue
+                      val r = Rect(box)
+                      r.offset(0, topOffset)
+                      val lineCount = maxOf(1, b.lines.size)
+                      blocks.add(Blk(r, jp, maxOf(1, r.height() / lineCount)))
+                  }
+
+                  val out = ArrayList<ResultView.Item>()
+                  for (m in merge(blocks)) {
+                      val zh = Tasks.await(tr.translate(m.text))
+                      out.add(ResultView.Item(m.rect, Traditionalizer.convert(zh), m.lineH))
+                  }
+                  return out
+              }
+
+              // 把上下相鄰、靠左對齊的區塊合併成一句,翻譯會比較通順
+              private fun merge(list: List<Blk>): List<Blk> {
+                  val sorted = list.sortedWith(compareBy<Blk>({ it.rect.top }, { it.rect.left }))
+                  val out = ArrayList<Blk>()
+                  for (b in sorted) {
+                      val target = out.lastOrNull { o -> canMerge(o, b) }
+                      if (target != null) {
+                          target.text = target.text + b.text
+                          target.rect.union(b.rect)
+                      } else {
+                          out.add(Blk(Rect(b.rect), b.text, b.lineH))
+                      }
+                  }
+                  return out
+              }
+
+              private fun canMerge(a: Blk, b: Blk): Boolean {
+                  val gap = b.rect.top - a.rect.bottom
+                  val overlapX = minOf(a.rect.right, b.rect.right) - maxOf(a.rect.left, b.rect.left)
+                  return a.rect.width() >= a.lineH * 6 &&
+                      overlapX > 0 &&
+                      gap <= a.lineH &&
+                      gap >= -(a.lineH / 2) &&
+                      Math.abs(a.rect.left - b.rect.left) <= a.lineH * 2
+              }
+
+              // ---------------------------------------------------------------- 顯示譯文
+
+              private fun createOverlay(): ResultView {
+                  val v = ResultView(this)
+                  val lp = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  if (Build.VERSION.SDK_INT >= 28) {
+                      lp.layoutInDisplayCutoutMode =
+                          WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                  }
+                  wm.addView(v, lp)
+                  overlay = v
+
+                  // 讓「譯」按鈕保持在譯文上方
+                  val b = button
+                  val blp = buttonLp
+                  if (b != null && blp != null) {
+                      try {
+                          wm.removeView(b)
+                          wm.addView(b, blp)
+                      } catch (e: Exception) {
+                          // ignore
+                      }
+                  }
+                  return v
+              }
+
+              private fun showResult(list: List<ResultView.Item>) {
+                  val v = overlay ?: createOverlay()
+                  v.items = list
+                  v.visibility = View.VISIBLE
+                  v.invalidate()
+              }
+
+              // ---------------------------------------------------------------- 結束
+
+              override fun onDestroy() {
+                  ui.removeCallbacks(kick)
+                  ui.removeCallbacks(giveUp)
+                  try {
+                      button?.let { wm.removeView(it) }
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  try {
+                      overlay?.let { wm.removeView(it) }
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  button = null
+                  overlay = null
+                  try {
+                      virtualDisplay?.release()
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  virtualDisplay = null
+                  try {
+                      imageReader?.close()
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  imageReader = null
+                  try {
+                      projection?.stop()
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  projection = null
+                  try {
+                      recognizer?.close()
+                      translator?.close()
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  worker.shutdownNow()
+                  bgThread.quitSafely()
+                  super.onDestroy()
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/res/drawable/ic_launcher.xml' <<'__SSFILE_EOF__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#1E88E5"
+                  android:pathData="M0,0h108v108h-108z" />
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M28,32h52v9h-52z M28,50h52v9h-52z M28,68h34v9h-34z" />
+          </vector>
+          __SSFILE_EOF__
+          cat > 'app/src/main/res/values/strings.xml' <<'__SSFILE_EOF__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">SS日文翻譯</string>
+          </resources>
+          __SSFILE_EOF__
+          cat > 'build.gradle.kts' <<'__SSFILE_EOF__'
+          plugins {
+              id("com.android.application") version "8.6.1" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          __SSFILE_EOF__
+          cat > 'gradle.properties' <<'__SSFILE_EOF__'
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          kotlin.code.style=official
+          __SSFILE_EOF__
+          cat > 'settings.gradle.kts' <<'__SSFILE_EOF__'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "SSTranslator"
+          include(":app")
+          __SSFILE_EOF__
+
+      - name: Download OpenCC dictionaries (簡轉繁字典)
+        run: |
+          D=app/src/main/assets/opencc
+          mkdir -p "$D"
+          B=https://raw.githubusercontent.com/BYVoid/OpenCC/master/data/dictionary
+          ok=1
+          for f in TSCharacters TSPhrases TWVariants; do
+            curl -fsSL --retry 3 "$B/$f.txt" -o "$D/$f.txt" || ok=0
+          done
+          for f in TWPhrasesIT TWPhrasesName TWPhrasesOther TWPhrases; do
+            curl -fsSL --retry 3 "$B/$f.txt" -o "$D/$f.txt" || rm -f "$D/$f.txt"
+          done
+          if [ "$ok" = "0" ]; then
+            echo "Direct download failed, trying pip package fallback"
+            pip install opencc-python-reimplemented
+            P=$(python3 -c "import opencc_python_reimplemented,os;print(os.path.dirname(opencc_python_reimplemented.__file__))")
+            find "$P" \( -name 'TS*.txt' -o -name 'TW*.txt' \) -exec cp {} "$D/" \;
+          fi
+          wc -l "$D"/*.txt
+          test -s "$D/TSPhrases.txt"
+          test -s "$D/TSCharacters.txt"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SS-Translator-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK to Releases (直接下載用)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk SS-Translator.apk
+          gh release create "v${{ github.run_number }}" SS-Translator.apk \
+            --repo "${{ github.repository }}" \
+            --title "SS日文翻譯 v${{ github.run_number }}" \
+            --notes "下載 SS-Translator.apk 安裝即可。"
