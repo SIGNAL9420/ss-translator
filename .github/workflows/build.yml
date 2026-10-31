@@ -1099,7 +1099,27 @@ jobs:
           test -s "$D/TSCharacters.txt"
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo '## 編譯錯誤摘要 (請截圖這一段)' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -n -E '^e: |error:|Execution failed|What went wrong' build.log | cut -c1-300 | head -40 >> "$GITHUB_STEP_SUMMARY"
+            echo '---' >> "$GITHUB_STEP_SUMMARY"
+            grep -n -A 10 'What went wrong' build.log | cut -c1-300 | head -30 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          tail -n 5 build.log
+          exit $code
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
