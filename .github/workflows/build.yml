@@ -202,6 +202,8 @@ jobs:
           賢者の石=賢者之石
           ザナッファー=沙那法
           エルフ=妖精族
+          宿屋=旅店
+          酒場=酒館
 
           # --- 魔法 ---
           ドラグスレイブ=龍破斬
@@ -273,6 +275,21 @@ jobs:
           >詢問=問
           >吾輩=我
           >您=你
+
+          # --- 翻譯前整理日文 (<正規表達式=取代成) ---
+          <[ほホーうウっッ]{4,}=おほほほ
+          <[ふフーっッ]{4,}=ふふふふ
+          <かしらい=かしら
+          <甘いわね=考えが浅いわね
+          <甘いな。=考えが浅いな。
+          <甘いぜ=考えが浅いぜ
+
+          # --- 翻譯後整理 ---
+          ~(?i)Hoh(?:\s*Ho)+\s*Hoh?=呵呵呵呵
+          ~(?i)(?:Ho\s*)+Ho=呵呵呵呵
+          ~呼{3,}=呵呵呵呵
+          ~哦呵+=呵呵呵呵
+          ~為什麼我們要有客棧=為什麼會有旅店這種東西
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_index.txt' <<'__SSFILE_EOF__'
           # 攻略索引: 關鍵字=頁碼|顯示名稱   (關鍵字可以是日文或中文,頁碼是攻略本圖片編號)
@@ -388,7 +405,7 @@ jobs:
                   val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val url = (p.getString("ai_url", "https://generativelanguage.googleapis.com/v1beta/openai/") ?: "").trim()
                   val key = (p.getString("ai_key", "") ?: "").trim()
-                  val model = (p.getString("ai_model", "gemini-2.0-flash") ?: "").trim()
+                  val model = (p.getString("ai_model", "gemini-3.5-flash-lite") ?: "").trim()
                   if (url.isEmpty() || model.isEmpty()) return null
                   return Config(url, key, model)
               }
@@ -538,15 +555,21 @@ jobs:
 
               private class Entry(val jp: String, val zh: String)
 
-              private class Sets(val entries: List<Entry>, val fixes: List<Entry>, val rx: List<Entry> = emptyList())
+              private class Sets(val entries: List<Entry>, val fixes: List<Entry>, val rx: List<Entry> = emptyList(), val pre: List<Entry> = emptyList())
 
               @Volatile
               private var builtin: Sets? = null
 
-              private fun parse(src: String, entries: MutableList<Entry>, fixes: MutableList<Entry>, rx: MutableList<Entry>? = null) {
+              private fun parse(src: String, entries: MutableList<Entry>, fixes: MutableList<Entry>, rx: MutableList<Entry>? = null, pre: MutableList<Entry>? = null) {
                   for (raw in src.split('\n')) {
                       val line = raw.trim()
                       if (line.isEmpty() || line.startsWith("#")) continue
+                      if (line.startsWith("<") && pre != null) {
+                          val b = line.substring(1)
+                          val q = b.indexOf('=')
+                          if (q > 0) pre.add(Entry(b.substring(0, q).trim(), b.substring(q + 1).trim()))
+                          continue
+                      }
                       if (line.startsWith("~") && rx != null) {
                           val b = line.substring(1)
                           val q = b.indexOf('=')
@@ -570,14 +593,15 @@ jobs:
                   val e = ArrayList<Entry>()
                   val f = ArrayList<Entry>()
                   val x = ArrayList<Entry>()
+                  val pr = ArrayList<Entry>()
                   try {
                       ctx.assets.open("glossary.txt").bufferedReader(Charsets.UTF_8).use { r ->
-                          parse(r.readText(), e, f, x)
+                          parse(r.readText(), e, f, x, pr)
                       }
                   } catch (ex: Exception) {
                       // 沒有內建名詞表就只用自訂的
                   }
-                  val s = Sets(e, f, x)
+                  val s = Sets(e, f, x, pr)
                   builtin = s
                   return s
               }
@@ -597,7 +621,7 @@ jobs:
                   val fixes = ArrayList<Entry>()
                   fixes.addAll(uf)
                   fixes.addAll(b.fixes)
-                  return Sets(entries, fixes, b.rx)
+                  return Sets(entries, fixes, b.rx, b.pre)
               }
 
               // 把日文裡的專有名詞換成暗號 Q1Q、Q2Q…,同時記下每個暗號對應的中文
@@ -667,6 +691,19 @@ jobs:
                       sb.append(e.jp).append('=').append(e.zh).append('\n')
                   }
                   return sb.toString().trim()
+              }
+
+              // 翻譯前先整理日文 (笑聲、口語、辨識多出來的字),讓機器翻譯比較不會翻歪
+              fun pre(ctx: Context, text: String): String {
+                  var s = text
+                  for (r in merged(ctx).pre) {
+                      try {
+                          s = Regex(r.jp).replace(s, r.zh)
+                      } catch (ex: Exception) {
+                          // 規則寫錯就略過
+                      }
+                  }
+                  return s
               }
           }
           __SSFILE_EOF__
@@ -801,6 +838,9 @@ jobs:
           import android.text.TextWatcher
           import android.view.Gravity
           import android.view.View
+          import android.widget.AdapterView
+          import android.widget.ArrayAdapter
+          import android.widget.Spinner
           import android.widget.EditText
           import android.widget.Button
           import android.widget.RadioButton
@@ -948,19 +988,138 @@ jobs:
                   return e
               }
 
+              private class Provider(val label: String, val url: String, val models: List<String>)
+
+              private val providers = listOf(
+                  Provider(
+                      "Google Gemini (有免費額度)", "https://generativelanguage.googleapis.com/v1beta/openai/",
+                      listOf(
+                          "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash",
+                          "gemini-3.6-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash"
+                      )
+                  ),
+                  Provider(
+                      "OpenAI (GPT,要付費)", "https://api.openai.com/v1/",
+                      listOf("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
+                  ),
+                  Provider(
+                      "Groq (有免費額度)", "https://api.groq.com/openai/v1/",
+                      listOf("meta-llama/llama-4-scout-17b-16e-instruct")
+                  ),
+                  Provider("自訂 (自己填網址和模型)", "", emptyList())
+              )
+
               private fun makeAiSettings(cfg: android.content.SharedPreferences): LinearLayout {
                   val box = LinearLayout(this)
                   box.orientation = LinearLayout.VERTICAL
                   val tv = TextView(this)
-                  tv.text = "AI 設定 (用 AI 翻譯才需要填;辨識到的日文或截圖會傳給該服務)。網址需是 OpenAI 格式。"
+                  tv.text = "AI 設定 (用 AI 翻譯才需要填;辨識到的日文或截圖會傳給該服務)。選好服務和模型,貼上金鑰就能用。"
                   tv.setPadding(0, dp(12), 0, 0)
                   box.addView(tv)
-                  val url = makeField("網址", "ai_url", cfg, "https://generativelanguage.googleapis.com/v1beta/openai/")
-                  val key = makeField("API 金鑰 (到 aistudio.google.com 免費申請)", "ai_key", cfg, "")
-                  val model = makeField("模型名稱", "ai_model", cfg, "gemini-2.0-flash")
-                  box.addView(url)
-                  box.addView(key)
-                  box.addView(model)
+
+                  val provSpin = Spinner(this)
+                  provSpin.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, providers.map { x -> x.label })
+                  val modelSpin = Spinner(this)
+                  val urlEdit = EditText(this)
+                  urlEdit.hint = "自訂網址 (OpenAI 格式)"
+                  urlEdit.setSingleLine(true)
+                  val modelEdit = EditText(this)
+                  modelEdit.hint = "自訂模型名稱"
+                  modelEdit.setSingleLine(true)
+                  val keyEdit = EditText(this)
+                  keyEdit.hint = "API 金鑰"
+                  keyEdit.setSingleLine(true)
+
+                  var curProv = cfg.getInt("ai_provider", 0).coerceIn(0, providers.size - 1)
+                  var loading = true
+
+                  fun applyProvider() {
+                      val p = providers[curProv]
+                      val custom = p.models.isEmpty()
+                      modelSpin.visibility = if (custom) View.GONE else View.VISIBLE
+                      urlEdit.visibility = if (custom) View.VISIBLE else View.GONE
+                      modelEdit.visibility = if (custom) View.VISIBLE else View.GONE
+                      if (!custom) {
+                          modelSpin.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, p.models)
+                          val saved = cfg.getString("ai_model_" + curProv, p.models[0])
+                          val idx = p.models.indexOf(saved).let { i -> if (i < 0) 0 else i }
+                          modelSpin.setSelection(idx)
+                          cfg.edit().putString("ai_url", p.url).putString("ai_model", p.models[idx]).apply()
+                      } else {
+                          urlEdit.setText(cfg.getString("ai_url_custom", ""))
+                          modelEdit.setText(cfg.getString("ai_model_custom", ""))
+                          cfg.edit().putString("ai_url", urlEdit.text.toString().trim())
+                              .putString("ai_model", modelEdit.text.toString().trim()).apply()
+                      }
+                      keyEdit.setText(cfg.getString("ai_key_" + curProv, ""))
+                      cfg.edit().putInt("ai_provider", curProv).putString("ai_key", keyEdit.text.toString().trim()).apply()
+                  }
+
+                  provSpin.setSelection(curProv)
+                  provSpin.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                          if (position != curProv || loading) {
+                              curProv = position
+                              applyProvider()
+                          }
+                      }
+
+                      override fun onNothingSelected(parent: AdapterView<*>?) {}
+                  }
+                  modelSpin.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                          val p = providers[curProv]
+                          if (p.models.isNotEmpty() && position < p.models.size) {
+                              cfg.edit().putString("ai_model", p.models[position])
+                                  .putString("ai_model_" + curProv, p.models[position]).apply()
+                          }
+                      }
+
+                      override fun onNothingSelected(parent: AdapterView<*>?) {}
+                  }
+                  keyEdit.addTextChangedListener(object : TextWatcher {
+                      override fun afterTextChanged(s: Editable?) {
+                          val k = s?.toString()?.trim() ?: ""
+                          cfg.edit().putString("ai_key", k).putString("ai_key_" + curProv, k).apply()
+                      }
+
+                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                  })
+                  urlEdit.addTextChangedListener(object : TextWatcher {
+                      override fun afterTextChanged(s: Editable?) {
+                          if (providers[curProv].models.isEmpty()) {
+                              val u = s?.toString()?.trim() ?: ""
+                              cfg.edit().putString("ai_url", u).putString("ai_url_custom", u).apply()
+                          }
+                      }
+
+                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                  })
+                  modelEdit.addTextChangedListener(object : TextWatcher {
+                      override fun afterTextChanged(s: Editable?) {
+                          if (providers[curProv].models.isEmpty()) {
+                              val u = s?.toString()?.trim() ?: ""
+                              cfg.edit().putString("ai_model", u).putString("ai_model_custom", u).apply()
+                          }
+                      }
+
+                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                  })
+
+                  box.addView(provSpin)
+                  box.addView(modelSpin)
+                  box.addView(urlEdit)
+                  box.addView(modelEdit)
+                  box.addView(keyEdit)
+                  applyProvider()
+                  loading = false
+
                   val res = TextView(this)
                   box.addView(makeButton("測試 AI 連線") {
                       res.text = "測試中…"
@@ -1099,6 +1258,125 @@ jobs:
                   } else {
                       status.text = "你取消了螢幕擷取授權"
                   }
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/RegionEditView.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Paint
+          import android.graphics.RectF
+          import android.util.TypedValue
+          import android.view.MotionEvent
+          import android.view.View
+          import kotlin.math.abs
+
+          /**
+           * 翻譯範圍編輯器:全螢幕、可觸控。拖曳黃框的上緣或下緣調整高度,拖曳中間移動整個框,按「完成」儲存。
+           * top / bot 都是螢幕座標 (像素)。
+           */
+          class RegionEditView(context: Context) : View(context) {
+
+              var top: Int = 0
+              var bot: Int = 0
+              var screenH: Int = 0
+              var onDone: ((Int, Int) -> Unit)? = null
+
+              private var mode = 0
+              private var lastY = 0f
+              private val btn = RectF()
+
+              private fun dp(v: Float): Float =
+                  TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
+
+              private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFEB3B }
+              private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFEB3B.toInt()
+                  style = Paint.Style.STROKE
+                  strokeWidth = 5f
+              }
+              private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFEB3B.toInt() }
+              private val btnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1565C0.toInt() }
+              private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFFFFF.toInt()
+                  textAlign = Paint.Align.CENTER
+                  textSize = 44f
+              }
+
+              override fun onDraw(canvas: Canvas) {
+                  super.onDraw(canvas)
+                  val loc = IntArray(2)
+                  getLocationOnScreen(loc)
+                  canvas.save()
+                  canvas.translate(-loc[0].toFloat(), -loc[1].toFloat())
+                  val w = (width + loc[0]).toFloat()
+                  val r = RectF(0f, top.toFloat(), w, bot.toFloat())
+                  canvas.drawRect(r, fill)
+                  canvas.drawRect(r, line)
+                  val hw = dp(60f)
+                  val hh = dp(6f)
+                  val cx = w / 2
+                  canvas.drawRoundRect(RectF(cx - hw, top - hh, cx + hw, top + hh), hh, hh, bar)
+                  canvas.drawRoundRect(RectF(cx - hw, bot - hh, cx + hw, bot + hh), hh, hh, bar)
+                  val midY = (top + bot) / 2f
+                  btn.set(cx - dp(60f), midY - dp(22f), cx + dp(60f), midY + dp(22f))
+                  canvas.drawRoundRect(btn, dp(8f), dp(8f), btnPaint)
+                  canvas.drawText("完成", cx, midY + 15f, text)
+                  text.textSize = 34f
+                  canvas.drawText("拖曳上緣/下緣調整,拖曳中間移動", cx, top - dp(14f), text)
+                  text.textSize = 44f
+                  canvas.restore()
+              }
+
+              override fun onTouchEvent(e: MotionEvent): Boolean {
+                  val y = e.rawY
+                  when (e.actionMasked) {
+                      MotionEvent.ACTION_DOWN -> {
+                          lastY = y
+                          val near = dp(40f)
+                          mode = if (btn.contains(e.rawX, y)) {
+                              4
+                          } else if (abs(y - top) < near) {
+                              1
+                          } else if (abs(y - bot) < near) {
+                              2
+                          } else if (y > top && y < bot) {
+                              3
+                          } else {
+                              0
+                          }
+                          return true
+                      }
+                      MotionEvent.ACTION_MOVE -> {
+                          val dy = (y - lastY).toInt()
+                          lastY = y
+                          val minH = dp(40f).toInt()
+                          when (mode) {
+                              1 -> top = (top + dy).coerceIn(0, bot - minH)
+                              2 -> bot = (bot + dy).coerceIn(top + minH, screenH)
+                              3 -> {
+                                  val h = bot - top
+                                  var nt = top + dy
+                                  if (nt < 0) nt = 0
+                                  if (nt + h > screenH) nt = screenH - h
+                                  top = nt
+                                  bot = nt + h
+                              }
+                          }
+                          invalidate()
+                          return true
+                      }
+                      MotionEvent.ACTION_UP -> {
+                          if (mode == 4 && btn.contains(e.rawX, y)) {
+                              onDone?.invoke(top, bot)
+                          }
+                          mode = 0
+                          return true
+                      }
+                  }
+                  return true
               }
           }
           __SSFILE_EOF__
@@ -2184,7 +2462,8 @@ jobs:
                   while (aiHistory.size > 3) aiHistory.removeFirst()
               }
 
-              private fun translateText(tr: Translator, jp: String, engine: String): String {
+              private fun translateText(tr: Translator, jp0: String, engine: String): String {
+                  val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
                   if (engine == "ai" || engine == "aiv") {
                       try {
                           val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
@@ -2406,6 +2685,49 @@ jobs:
                   menuView = null
               }
 
+              private var regionEditor: RegionEditView? = null
+
+              private fun showRegionEditor() {
+                  if (regionEditor != null) return
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val mt = readMetrics()
+                  val rows = regionRows(mt[1])
+                  val v = RegionEditView(this)
+                  v.top = rows[0]
+                  v.bot = rows[1]
+                  v.screenH = mt[1]
+                  val lp = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  if (Build.VERSION.SDK_INT >= 28) {
+                      lp.layoutInDisplayCutoutMode =
+                          WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                  }
+                  v.onDone = { t, b ->
+                      val tp = (t * 100f / mt[1]).toInt().coerceIn(0, 95)
+                      val bp = (b * 100f / mt[1] + 0.5f).toInt().coerceIn(tp + 1, 100)
+                      prefs.edit().putInt("top", tp).putInt("bot", bp).apply()
+                      try {
+                          wm.removeView(v)
+                      } catch (e: Exception) {
+                          // ignore
+                      }
+                      regionEditor = null
+                      curSig = null
+                      toast("翻譯範圍已儲存:" + tp + "% ~ " + bp + "%")
+                  }
+                  wm.addView(v, lp)
+                  regionEditor = v
+                  bringButtonToFront()
+              }
+
               private fun applyModeChange() {
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
@@ -2476,19 +2798,9 @@ jobs:
                       }
                       prefs.edit().putString("engine", next).apply()
                   })
-                  addRow({ "顯示翻譯範圍 (3 秒)" }, {
+                  addRow({ "調整翻譯範圍 (拖曳黃框)" }, {
                       closeMenu()
-                      val mt = readMetrics()
-                      val rows = regionRows(mt[1])
-                      val v = overlay ?: createOverlay()
-                      v.items = emptyList()
-                      v.region = Rect(0, rows[0], mt[0], rows[1])
-                      v.visibility = View.VISIBLE
-                      v.invalidate()
-                      ui.postDelayed({
-                          v.region = null
-                          v.invalidate()
-                      }, 3000)
+                      showRegionEditor()
                   })
                   addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
@@ -2572,8 +2884,20 @@ jobs:
                   val bl = buttonLp
                   lp.x = if (bl != null) maxOf(0, minOf(bl.x + dp(62), mt[0] - dp(260))) else dp(60)
                   lp.y = if (bl != null) maxOf(0, minOf(bl.y, mt[1] - dp(440))) else dp(100)
-                  wm.addView(box, lp)
-                  menuView = box
+                  val scroll = android.widget.ScrollView(this)
+                  scroll.addView(box)
+                  scroll.setOnTouchListener { _, e ->
+                      if (e.action == MotionEvent.ACTION_OUTSIDE) {
+                          closeMenu()
+                          true
+                      } else {
+                          false
+                      }
+                  }
+                  lp.height = (mt[1] * 0.78f).toInt()
+                  lp.y = dp(30)
+                  wm.addView(scroll, lp)
+                  menuView = scroll
               }
 
               private fun enhance(src: Bitmap, scale: Float, contrast: Float): Bitmap {
@@ -2838,6 +3162,13 @@ jobs:
               // ---------------------------------------------------------------- 結束
 
               override fun onDestroy() {
+                  try {
+                      val re = regionEditor
+                      if (re != null) wm.removeView(re)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  regionEditor = null
                   hideGuideHint()
                   closeMenu()
                   try {
@@ -2951,8 +3282,11 @@ jobs:
         run: |
           G=app/src/main/assets/guide
           mkdir -p "$G"
-          if [ -f guide.zip ]; then
-            unzip -o -j guide.zip -d "$G"
+          Z=""
+          [ -f guide.zip ] && Z=guide.zip
+          [ -f .github/workflows/guide.zip ] && Z=.github/workflows/guide.zip
+          if [ -n "$Z" ]; then
+            unzip -o -j "$Z" -d "$G"
           else
             echo "guide.zip not found, downloading from archive.org"
             sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils imagemagick
