@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 3
-                  versionName = "2.1"
+                  versionCode = 4
+                  versionName = "2.2"
               }
 
               buildTypes {
@@ -885,7 +885,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v2.1 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v2.2 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2332,7 +2332,7 @@ jobs:
               }
 
               // src 是「翻譯範圍」裁切出來的圖,topOffset 是它在整個螢幕上的 y 位置。src 由呼叫的人負責回收。
-              private fun recognizeAndTranslate(src: Bitmap, topOffset: Int): List<ResultView.Item> {
+              private fun recognizeAndTranslate(src: Bitmap, topOffset: Int, auto: Boolean = false): List<ResultView.Item> {
                   lastRegion = Rect(0, topOffset, src.width, topOffset + src.height)
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val engine = prefs.getString("engine", "both") ?: "both"
@@ -2359,7 +2359,7 @@ jobs:
                           return res
                       } catch (e: Exception) {
                           val msg = e.message ?: e.toString()
-                          if (msg.contains("429")) aiBlockedUntil = System.currentTimeMillis() + 5 * 60 * 1000L
+                          if (msg.contains("429")) noteQuota()
                           ui.post { toast("AI 看圖失敗,改用文字辨識:" + msg.take(60)) }
                       }
                   }
@@ -2420,8 +2420,14 @@ jobs:
                   val blocks = pickBestRows(cands)
 
                   val out = ArrayList<ResultView.Item>()
+                  val merged = merge(blocks)
+                  if (auto) {
+                      val jpAll = merged.joinToString("") { x -> x.text }
+                      val prevItems = shownItems
+                      if (prevItems != null && shownJp.isNotEmpty() && sameSentence(jpAll, shownJp)) return prevItems
+                  }
                   ui.post { setLabel("譯") }
-                  for (m in merge(blocks)) {
+                  for (m in merged) {
                       out.add(ResultView.Item(m.rect, translateText(tr, m.text, engine), m.lineH, m.text))
                   }
                   return out
@@ -2431,6 +2437,22 @@ jobs:
                   (getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("mode", "auto") ?: "auto") == "auto"
 
               private var paused = false
+
+              // 目前畫面上顯示的那一句 (原文 + 譯文),自動模式下辨識到同一句就不再翻譯
+              @Volatile
+              private var shownJp = ""
+              @Volatile
+              private var shownItems: List<ResultView.Item>? = null
+
+              private fun sameSentence(a: String, b: String): Boolean {
+                  if (a == b) return true
+                  val x = jpBigrams(a)
+                  val y = jpBigrams(b)
+                  if (x.size < 3 || y.size < 3) return false
+                  val inter = x.count { t -> y.contains(t) }
+                  val union = x.size + y.size - inter
+                  return union > 0 && inter.toFloat() / union >= 0.55f
+              }
 
               private fun pauseAuto() {
                   paused = true
@@ -2447,6 +2469,8 @@ jobs:
                   paused = false
                   curSig = null
                   doneJp = ""
+                  shownJp = ""
+                  shownItems = null
                   setLabel(baseLabel())
                   toast("已恢復自動翻譯")
               }
@@ -2546,7 +2570,7 @@ jobs:
                   setLabel("…")
                   worker.execute {
                       val result = try {
-                          Result.success(recognizeAndTranslate(c, top))
+                          Result.success(recognizeAndTranslate(c, top, true))
                       } catch (e: Exception) {
                           Result.failure<List<ResultView.Item>>(e)
                       }
@@ -2559,11 +2583,15 @@ jobs:
                               toast("翻譯失敗:" + (result.exceptionOrNull()?.message ?: result.exceptionOrNull()?.toString() ?: "未知錯誤"))
                           } else if (list.isEmpty()) {
                               doneJp = ""
+                              shownJp = ""
+                              shownItems = null
                               hideOverlay()
                           } else {
                               val jpNow = list.joinToString("") { x -> x.orig }
                               if (jpNow != doneJp) {
                                   doneJp = jpNow
+                                  shownJp = jpNow
+                                  shownItems = list
                                   showResult(list)
                               }
                           }
@@ -2718,6 +2746,19 @@ jobs:
               @Volatile
               private var aiBlockedUntil = 0L
 
+              private var quotaHits = 0
+              private var lastQuotaAt = 0L
+
+              // 429 之後暫停 AI:第一次 5 分鐘,一小時內再發生就 60 分鐘 (多半是每日額度用完)
+              private fun noteQuota(): Int {
+                  val now = System.currentTimeMillis()
+                  quotaHits = if (now - lastQuotaAt < 60 * 60 * 1000L) quotaHits + 1 else 1
+                  lastQuotaAt = now
+                  val mins = if (quotaHits >= 2) 60 else 5
+                  aiBlockedUntil = now + mins * 60 * 1000L
+                  return mins
+              }
+
               private fun aiCall(jp: String): String? {
                   val cfg = AiClient.config(applicationContext)
                   if (cfg == null || cfg.key.isEmpty()) return null
@@ -2730,8 +2771,8 @@ jobs:
                   } catch (e: Exception) {
                       val msg = e.message ?: e.toString()
                       if (msg.contains("429")) {
-                          aiBlockedUntil = System.currentTimeMillis() + 5 * 60 * 1000L
-                          ui.post { toast("AI 額度用完了,5 分鐘內改用 Google 翻譯") }
+                          val mins = noteQuota()
+                          ui.post { toast("AI 額度用完了," + mins + " 分鐘內改用 Google 翻譯") }
                       } else {
                           ui.post { toast("AI 失敗,改用 Google 翻譯:" + msg.take(60)) }
                       }
@@ -3102,6 +3143,7 @@ jobs:
                       else -> "線上優先,失敗改離線"
                   }
 
+                  addRow({ "版本 2.2 (確認是新版)" }, { })
                   addRow({ "翻譯時機:" + (if (autoOn()) "自動" else "手動") }, {
                       val next = if (autoOn()) "manual" else "auto"
                       prefs.edit().putString("mode", next).apply()
