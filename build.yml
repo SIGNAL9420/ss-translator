@@ -938,9 +938,6 @@ jobs:
                       )
                   )
 
-                  root.addView(makeAiSettings(cfg))
-
-
                   root.addView(
                       makeRadioInts(
                           "智慧模式的檢查嚴格度 (越嚴格越常用 AI,越準也越耗額度)", "strict", 1,
@@ -952,6 +949,8 @@ jobs:
                           cfg
                       )
                   )
+
+                  root.addView(makeAiSettings(cfg))
                   root.addView(makeButton("📖 開啟攻略本 (華曜版)") {
                       startActivity(Intent(this, GuideActivity::class.java))
                   })
@@ -2343,15 +2342,25 @@ jobs:
 
                   if (engine == "aiv") {
                       try {
+                          val s2 = signature(src)
+                          val ls = lastAivSig
+                          val lr = lastAivResult
+                          if (ls != null && lr != null && ls.size == s2.size && sigDiff(ls, s2) <= 20) return lr
+                          if (System.currentTimeMillis() < aiBlockedUntil) throw IllegalStateException("AI 額度暫停中")
                           ui.post { setLabel("AI") }
                           val r = AiClient.translateImage(applicationContext, src, aiHistory.toList())
                           if (r == null) return emptyList()
                           val zh = Glossary.fix(applicationContext, r.second)
                           rememberAi(zh)
                           val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                          return listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 3), r.first))
+                          val res = listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 3), r.first))
+                          lastAivSig = s2
+                          lastAivResult = res
+                          return res
                       } catch (e: Exception) {
-                          ui.post { toast("AI 看圖失敗,改用文字辨識:" + (e.message ?: e.toString())) }
+                          val msg = e.message ?: e.toString()
+                          if (msg.contains("429")) aiBlockedUntil = System.currentTimeMillis() + 5 * 60 * 1000L
+                          ui.post { toast("AI 看圖失敗,改用文字辨識:" + msg.take(60)) }
                       }
                   }
                   if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst") {
@@ -2512,7 +2521,7 @@ jobs:
                   }
                   val sig = signature(crop)
                   val prev = curSig
-                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig) <= 6) {
+                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig) <= (if (doneJp.isNotEmpty()) 30 else 6)) {
                       crop.recycle()
                       return
                   }
@@ -2672,7 +2681,76 @@ jobs:
                   while (aiHistory.size > 3) aiHistory.removeFirst()
               }
 
+              // 譯文快取:同一句 (或 OCR 稍有出入的同一句) 不重複翻,省 AI 額度
+              private val trCache = LinkedHashMap<String, String>()
+              private val trCacheKeys = java.util.ArrayDeque<String>()
+
+              private fun cacheKey(engine: String, jp: String): String =
+                  engine + "|" + jp.filter { c -> c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF' || c in 'A'..'Z' || c in 'a'..'z' }
+
+              private fun cacheGet(engine: String, jp: String): String? {
+                  val key = cacheKey(engine, jp)
+                  trCache[key]?.let { return it }
+                  val mine = jpBigrams(jp)
+                  if (mine.size < 4) return null
+                  for (k in trCacheKeys) {
+                      if (!k.startsWith("$engine|")) continue
+                      val other = jpBigrams(k.substring(engine.length + 1))
+                      if (other.isEmpty()) continue
+                      val inter = mine.count { x -> other.contains(x) }
+                      val union = mine.size + other.size - inter
+                      if (union > 0 && inter.toFloat() / union >= 0.8f) return trCache[k]
+                  }
+                  return null
+              }
+
+              private fun cachePut(engine: String, jp: String, zh: String) {
+                  val key = cacheKey(engine, jp)
+                  if (!trCache.containsKey(key)) trCacheKeys.addFirst(key)
+                  trCache[key] = zh
+                  while (trCacheKeys.size > 120) {
+                      val old = trCacheKeys.removeLast()
+                      trCache.remove(old)
+                  }
+              }
+
+              // AI 額度用完 (429) 後暫停一段時間不再呼叫,避免一直失敗
+              @Volatile
+              private var aiBlockedUntil = 0L
+
+              private fun aiCall(jp: String): String? {
+                  val cfg = AiClient.config(applicationContext)
+                  if (cfg == null || cfg.key.isEmpty()) return null
+                  if (System.currentTimeMillis() < aiBlockedUntil) return null
+                  return try {
+                      val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
+                      val fixed = Glossary.fix(applicationContext, z)
+                      rememberAi(fixed)
+                      fixed
+                  } catch (e: Exception) {
+                      val msg = e.message ?: e.toString()
+                      if (msg.contains("429")) {
+                          aiBlockedUntil = System.currentTimeMillis() + 5 * 60 * 1000L
+                          ui.post { toast("AI 額度用完了,5 分鐘內改用 Google 翻譯") }
+                      } else {
+                          ui.post { toast("AI 失敗,改用 Google 翻譯:" + msg.take(60)) }
+                      }
+                      null
+                  }
+              }
+
+              private var lastAivSig: IntArray? = null
+              private var lastAivResult: List<ResultView.Item>? = null
+
               private fun translateText(tr: Translator, jp0: String, engine: String): String {
+                  val hit = cacheGet(engine, jp0)
+                  if (hit != null) return hit
+                  val z = translateUncached(tr, jp0, engine)
+                  cachePut(engine, jp0, z)
+                  return z
+              }
+
+              private fun translateUncached(tr: Translator, jp0: String, engine: String): String {
                   val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
                   if (engine == "smart") {
                       val z1 = translateText(tr, jp0, "both")
@@ -2681,42 +2759,13 @@ jobs:
                           rememberAi(z1)
                           return z1
                       }
-                      val cfg = AiClient.config(applicationContext)
-                      if (cfg == null || cfg.key.isEmpty()) return z1
-                      try {
-                          val z = AiClient.translateText(applicationContext, jp0, aiHistory.toList())
-                          val fixed = Glossary.fix(applicationContext, z)
-                          rememberAi(fixed)
-                          return fixed
-                      } catch (e: Exception) {
-                          ui.post { toast("AI 失敗,先用一般翻譯:" + (e.message ?: e.toString())) }
-                          return z1
-                      }
+                      return aiCall(jp0) ?: z1
                   }
                   if (engine == "aifirst") {
-                      val cfg0 = AiClient.config(applicationContext)
-                      if (cfg0 != null && cfg0.key.isNotEmpty()) {
-                          try {
-                              val z = AiClient.translateText(applicationContext, jp0, aiHistory.toList())
-                              val fixed = Glossary.fix(applicationContext, z)
-                              rememberAi(fixed)
-                              return fixed
-                          } catch (e: Exception) {
-                              ui.post { toast("AI 失敗,改用 Google 翻譯:" + (e.message ?: e.toString()).take(60)) }
-                          }
-                      }
-                      return translateText(tr, jp0, "both")
+                      return aiCall(jp0) ?: translateText(tr, jp0, "both")
                   }
                   if (engine == "ai" || engine == "aiv") {
-                      try {
-                          val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
-                          val fixed = Glossary.fix(applicationContext, z)
-                          rememberAi(fixed)
-                          return fixed
-                      } catch (e: Exception) {
-                          ui.post { toast("AI 翻譯失敗,改用一般翻譯:" + (e.message ?: e.toString())) }
-                          return translateText(tr, jp, "both")
-                      }
+                      return aiCall(jp) ?: translateText(tr, jp, "both")
                   }
                   // 句子很長 (超過 45 字) 才拆開翻,短的前後句一起翻,語氣才會連貫
                   val parts = jp.split(Regex("(?<=[。！？!?…])")).map { x -> x.trim() }.filter { x -> x.isNotEmpty() }
@@ -3068,6 +3117,16 @@ jobs:
                           else -> "both"
                       }
                       prefs.edit().putString("engine", next).apply()
+                  })
+                  addRow({
+                      "智慧檢查嚴格度:" + when (prefs.getInt("strict", 1)) {
+                          0 -> "寬鬆 (最省額度)"
+                          2 -> "嚴格 (常用 AI)"
+                          else -> "標準"
+                      }
+                  }, {
+                      val n = when (prefs.getInt("strict", 1)) { 0 -> 1; 1 -> 2; else -> 0 }
+                      prefs.edit().putInt("strict", n).apply()
                   })
                   addRow({ "調整翻譯範圍 (拖曳黃框)" }, {
                       closeMenu()
