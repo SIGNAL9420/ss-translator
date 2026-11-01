@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 2
-                  versionName = "2.0-AI"
+                  versionCode = 3
+                  versionName = "2.1"
               }
 
               buildTypes {
@@ -105,6 +105,10 @@ jobs:
                       </intent-filter>
                   </activity>
 
+                  <activity
+                      android:name=".GuideActivity"
+                      android:exported="false" />
+
                   <service
                       android:name=".TranslateService"
                       android:exported="false"
@@ -116,39 +120,249 @@ jobs:
           # 內建專有名詞表 (秀逗魔導士 / Slayers)
           # 格式: 日文=中文        翻譯前會先把日文換成中文,避免被機器翻譯翻成別的字
           # 格式: >錯的譯法=正確譯法   翻譯完成後,把機器翻錯的詞換成正確的
-          # 這些是通用譯名的起點,不保證是台灣官方版本。可在 App 主畫面的「自訂專有名詞」覆蓋。
+          # 譯名以中文維基百科「秀逗魔導士角色列表」為主 (使用者熟悉的動畫譯名)。
+          # 維基沒有收錄、只能參考華曜《完全攻略本》的詞,在下面標示「(攻略本)」。
 
-          # --- 角色 ---
+          # --- 主要角色 (維基) ---
           リナ=莉娜
           インバース=因巴斯
           ガウリイ=高里
           ガウリィ=高里
           ガブリエフ=加布列夫
-          アメリア=阿梅莉亞
-          ゼルガディス=澤爾加迪斯
-          シルフィール=西爾菲爾
-          ナーガ=娜迦
-          フィリア=菲莉亞
-          ゼロス=傑洛斯
+          白蛇のナーガ=白蛇娜卡
+          ナーガ=娜卡
+          ゼルガディス=傑路剛帝士
+          グレイワーズ=格雷瓦茲
+          アメリア=阿梅莉雅
+          シルフィール=希爾菲兒
+          ゼロス=傑洛士
+          フィリア=菲莉雅
+          マルチナ=瑪露琪娜
+          ルナ=露娜
+          ポコタ=波克塔
           ルーク=路克
-          ミリーナ=米莉娜
+          ミリーナ=米麗娜
+          レゾ=雷藏
+          ズーマ=祖馬
+          ヴァルガーヴ=瓦爾加布
+          ラドック=拉多克
+          ロディマス=羅帝瑪斯
+          ハルシフォム=哈爾西佛姆
 
-          # --- 名詞 / 招式 / 道具 ---
+          # --- 魔族與魔王 (維基) ---
+          シャブラニグドゥ=夏布拉尼古德
+          フィブリゾ=菲布里佐
+          ダルフィン=達爾菲
+          ゼラス=潔拉絲
+          グラウシェラー=古勞雪拉
+          ガーヴ=加布
+          ダイナスト=戴
+          グロウ=顧羅
+          シェーラ=雪拉
+          ノースト=諾斯特
+          ラルターク=拉爾泰克
+          ラーシャート=拉夏鐸
+          赤眼の魔王=赤眼魔王
+          魔族=魔族
+          純魔族=純魔族
+          魔王=魔王
+          竜族=龍族
+          赤竜神=赤龍神
+          黄金竜=黃金龍族
+
+          # --- 龍族 / 神族 / 其他 (維基角色列表,日文原名為我依知識對應,可能有誤) ---
+          スィーフィード=史菲德
+          ヴラバザード=瓦拉巴薩德
+          ラグラディア=拉格拉提亞
+          ヴァルウィン=巴爾溫
+          ランゴート=朗戈特
+          ミルガズィア=米爾蓋茲亞
+          フィリオネル=菲力歐奈爾
+
+          # --- 角色 (攻略本) ---
+          ラーク=拉克
+          リネア=莉內亞
+          フォシグ=霍克
+          モスマン=魔斯人
+          ゾット=左特
+          ディオン=迪翁
+          エミリア=愛咪莉亞
+          ガレフ=加列夫
+          スライム=史萊姆
+
+          # --- 名詞 / 地名 / 道具 (維基) ---
           スレイヤーズ=秀逗魔導士
           魔導士=魔導士
           魔道士=魔導士
-          竜破斬=龍破斬
+          セイルーン=賽倫
+          ゼフィーリア=榭菲理亞
+          ゾアナ=佐亞納
+          光の剣=光之劍
+          魔血玉=魔血玉
+          賢者の石=賢者之石
+          ザナッファー=沙那法
+          エルフ=妖精族
+
+          # --- 魔法 ---
           ドラグスレイブ=龍破斬
           ドラグ・スレイブ=龍破斬
-          光の剣=光之劍
-          ゴルンノヴァ=哥倫諾瓦
-          魔血玉=魔血玉
-          魔族=魔族
-          竜族=龍族
-          魔王=魔王
+          ギガスレイブ=重破斬
+          ギガ・スレイブ=重破斬
+          ラグナブレード=神滅斬
+          アストラルヴァイン=魔皇靈斬
+          ラ・ティルト=拉提爾特
+          ラティルト=拉提爾特
+          エルメキアランス=艾爾梅加槍
+          ブラムブレイザー=布拉姆布雷薩
+          ホーリィブレス=神聖火焰
+          ホーリーブレス=神聖火焰
+          リカバリィ=恢復
+          リザレクション=復活
+          スリーピング=睡眠
+          フレアアロー=核融箭
+          フレアランス=核融槍
+          ファイアーボール=火球
+          ブラストボム=爆烈火藥
+          バーストフレア=爆裂核融術
+          フリーズアロー=冷凍箭
+          アイシクルランス=冰凍之槍
+          ディルブランド=迪爾布藍德
+          ダグハウト=達格豪特
+          ディムウィン=迪姆之風
+          ブラムガッシュ=布拉姆加
+          ブラムファング=布拉姆之牙
 
           # --- 遊戲選單 ---
           表通り=大街
+
+          # --- 機翻常見的錯譯 / 舊譯名 → 維基譯名 ---
+          >莉娜·英帕絲=莉娜·因巴斯
+          >英帕絲=因巴斯
+          >葛爾利=高里
+          >傑爾加帝斯=傑路剛帝士
+          >澤爾加迪斯=傑路剛帝士
+          >亞美莉亞=阿梅莉雅
+          >阿美莉亞=阿梅莉雅
+          >希爾菲=希爾菲兒
+          >西爾菲爾=希爾菲兒
+          >娜迦=娜卡
+          >那加=娜卡
+          >麗娜=莉娜
+          >夏布拉尼古度=夏布拉尼古德
+          >不是更好嗎=不是比較好嗎
+          >不是更好的嗎=不是比較好嗎
+          >是不是更好呢=是不是比較好呢
+          >怎麼辦才好呢=該怎麼辦才好呢
+          >您的意思是=你的意思是
+
+          # --- 口語化規則 (~正規表達式=取代成,用 $1 代表括號抓到的字,由上往下依序套用) ---
+          ~等到([^，。？！、]{1,8})(?:來臨|到來)，([^，。？！、]{2,12})不是(?:更|比較)好(?:嗎|的嗎)=是不是等到$1再$2比較好呢
+          ~([^，。？！、]{2,12})不是更好嗎=是不是$1比較好呢
+          ~([^，。？！、]{2,12})不是比較好嗎=是不是$1比較好呢
+          ~([^，。？！、]{2,12})不是更好的嗎=是不是$1比較好呢
+
+          # --- 台灣口語用詞 ---
+          >是否=是不是
+          >無法=沒辦法
+          >必須=一定要
+          >並且=而且
+          >如此=這樣
+          >十分=很
+          >相當=很
+          >前往=去
+          >詢問=問
+          >吾輩=我
+          >您=你
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/guide_index.txt' <<'__SSFILE_EOF__'
+          # 攻略索引: 關鍵字=頁碼|顯示名稱   (關鍵字可以是日文或中文,頁碼是攻略本圖片編號)
+          リナ=9|莉娜
+          莉娜=9|莉娜
+          ナーガ=11|娜卡
+          娜卡=11|娜卡
+          ラーク=12|拉克
+          拉克=12|拉克
+          リネア=12|莉內亞
+          莉內亞=12|莉內亞
+          ガウリイ=13|高里
+          ガウリィ=13|高里
+          高里=13|高里
+          ゼルガディス=14|傑路剛帝士
+          傑路剛帝士=14|傑路剛帝士
+          アメリア=15|阿梅莉雅
+          阿梅莉雅=15|阿梅莉雅
+          シルフィール=16|希爾菲
+          希爾菲兒=16|希爾菲
+          ディオン=17|迪翁(魔族)
+          迪翁=17|迪翁(魔族)
+          フォシグ=17|霍克(魔族)
+          霍克=17|霍克(魔族)
+          ゾット=17|左特(魔族)
+          左特=17|左特(魔族)
+          モスマン=17|魔斯人(魔族)
+          魔斯人=17|魔斯人(魔族)
+          エミリア=17|愛咪莉亞(魔族)
+          愛咪莉亞=17|愛咪莉亞(魔族)
+          シャブラニグドゥ=17|夏布拉尼古德
+          ガレフ=95|加列夫(敵人資料)
+          加列夫=95|加列夫(敵人資料)
+          ホーリィブレス=91|白魔法
+          ホーリーブレス=91|白魔法
+          神聖火焰=91|白魔法
+          リカバリィ=91|白魔法
+          リザレクション=91|白魔法
+          ドラグスレイブ=92|黑魔法
+          ラグナブレード=92|黑魔法
+          龍破斬=92|黑魔法
+          神滅斬=92|黑魔法
+          エルメキアランス=93|精靈魔法
+          艾爾梅加槍=93|精靈魔法
+          ブラムブレイザー=93|精靈魔法
+          フレアアロー=93|精靈魔法
+          ファイアーボール=93|精靈魔法
+          フリーズアロー=93|精靈魔法
+          スリーピング=93|精靈魔法
+          核融箭=93|精靈魔法
+          火球=93|精靈魔法
+          ラティルト=93|精靈魔法
+          ラ・ティルト=93|精靈魔法
+          魔法=88|魔法資料
+          魔族=17|魔族
+          ギガスレイブ=92|黑魔法
+          重破斬=92|黑魔法
+          傑洛士=17|魔族
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/guide_toc.txt' <<'__SSFILE_EOF__'
+          攻略本目錄 (圖片編號)
+          1|封面
+          5|目錄
+          7|人物關係圖
+          9|角色:莉娜
+          11|角色:那加
+          12|角色:拉克、莉內亞
+          13|角色:葛爾利
+          14|角色:傑爾加帝斯
+          15|角色:亞美莉亞
+          16|角色:希爾菲
+          17|魔族
+          19|系統:冒險模式
+          21|系統:戰鬥模式
+          27|攻略的看法
+          29|第1章 危機一髮
+          33|第2章 一擲千金
+          43|第3章 全體集合
+          51|第4章 順風滿帆
+          57|第5章 豬突猛進
+          67|第6章 惡人討伐
+          75|第7章 魔王召喚
+          83|第8章 最終決戰
+          88|資料:魔法資料的看法
+          90|攻擊範圍
+          91|白魔法、黑魔法
+          93|精靈魔法
+          95|敵人資料
+          96|小型遊戲資料
+          97|版權頁
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/AiClient.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
@@ -324,15 +538,21 @@ jobs:
 
               private class Entry(val jp: String, val zh: String)
 
-              private class Sets(val entries: List<Entry>, val fixes: List<Entry>)
+              private class Sets(val entries: List<Entry>, val fixes: List<Entry>, val rx: List<Entry> = emptyList())
 
               @Volatile
               private var builtin: Sets? = null
 
-              private fun parse(src: String, entries: MutableList<Entry>, fixes: MutableList<Entry>) {
+              private fun parse(src: String, entries: MutableList<Entry>, fixes: MutableList<Entry>, rx: MutableList<Entry>? = null) {
                   for (raw in src.split('\n')) {
                       val line = raw.trim()
                       if (line.isEmpty() || line.startsWith("#")) continue
+                      if (line.startsWith("~") && rx != null) {
+                          val b = line.substring(1)
+                          val q = b.indexOf('=')
+                          if (q > 0) rx.add(Entry(b.substring(0, q).trim(), b.substring(q + 1).trim()))
+                          continue
+                      }
                       val isFix = line.startsWith(">")
                       val body = if (isFix) line.substring(1) else line
                       val eq = body.indexOf('=')
@@ -349,14 +569,15 @@ jobs:
                   if (b != null) return b
                   val e = ArrayList<Entry>()
                   val f = ArrayList<Entry>()
+                  val x = ArrayList<Entry>()
                   try {
                       ctx.assets.open("glossary.txt").bufferedReader(Charsets.UTF_8).use { r ->
-                          parse(r.readText(), e, f)
+                          parse(r.readText(), e, f, x)
                       }
                   } catch (ex: Exception) {
                       // 沒有內建名詞表就只用自訂的
                   }
-                  val s = Sets(e, f)
+                  val s = Sets(e, f, x)
                   builtin = s
                   return s
               }
@@ -376,7 +597,7 @@ jobs:
                   val fixes = ArrayList<Entry>()
                   fixes.addAll(uf)
                   fixes.addAll(b.fixes)
-                  return Sets(entries, fixes)
+                  return Sets(entries, fixes, b.rx)
               }
 
               // 把日文裡的專有名詞換成暗號 Q1Q、Q2Q…,同時記下每個暗號對應的中文
@@ -428,6 +649,13 @@ jobs:
                   for (f in merged(ctx).fixes) {
                       s = s.replace(f.jp, f.zh)
                   }
+                  for (r in merged(ctx).rx) {
+                      try {
+                          s = Regex(r.jp).replace(s, r.zh)
+                      } catch (ex: Exception) {
+                          // 規則寫錯就略過
+                      }
+                  }
                   s = Regex("([\\u4E00-\\u9FFF])[＝=・]([\\u4E00-\\u9FFF])").replace(s, "\$1·\$2")
                   return s
               }
@@ -439,6 +667,121 @@ jobs:
                       sb.append(e.jp).append('=').append(e.zh).append('\n')
                   }
                   return sb.toString().trim()
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/GuideActivity.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.app.Activity
+          import android.app.AlertDialog
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.webkit.WebView
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          /**
+           * 內建攻略閱讀器:顯示華曜出版《秀逗魔導士 完全攻略本》的頁面圖片,可雙指縮放、翻頁、依目錄跳頁。
+           * 圖片放在 assets/guide/pNNN.jpg (由 GitHub 上傳的 guide.zip 解開而來)。
+           */
+          class GuideActivity : Activity() {
+
+              private lateinit var web: WebView
+              private lateinit var info: TextView
+              private var page = 1
+              private var total = 0
+
+              private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val names = try {
+                      assets.list("guide")?.filter { x -> x.endsWith(".jpg") } ?: emptyList()
+                  } catch (e: Exception) {
+                      emptyList()
+                  }
+                  total = names.size
+                  page = intent.getIntExtra("page", 1)
+
+                  val root = LinearLayout(this)
+                  root.orientation = LinearLayout.VERTICAL
+
+                  if (total == 0) {
+                      val t = TextView(this)
+                      t.text = "這個版本沒有包含攻略圖片。\n請把 guide.zip 上傳到 GitHub 專案的最外層 (跟 build.yml 的上一層資料夾同一層,不是 .github 裡面),重新編譯後再安裝。"
+                      t.textSize = 16f
+                      t.setPadding(dp(16), dp(24), dp(16), dp(16))
+                      root.addView(t)
+                      setContentView(root)
+                      return
+                  }
+
+                  web = WebView(this)
+                  web.settings.builtInZoomControls = true
+                  web.settings.displayZoomControls = false
+                  web.settings.useWideViewPort = true
+                  web.settings.loadWithOverviewMode = true
+                  web.setBackgroundColor(0xFF111111.toInt())
+                  root.addView(web, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+
+                  val bar = LinearLayout(this)
+                  bar.orientation = LinearLayout.HORIZONTAL
+                  bar.gravity = Gravity.CENTER_VERTICAL
+                  bar.setBackgroundColor(0xFFEEEEEE.toInt())
+                  val prev = Button(this)
+                  prev.text = "上一頁"
+                  val next = Button(this)
+                  next.text = "下一頁"
+                  val toc = Button(this)
+                  toc.text = "目錄"
+                  info = TextView(this)
+                  info.gravity = Gravity.CENTER
+                  prev.setOnClickListener { go(page - 1) }
+                  next.setOnClickListener { go(page + 1) }
+                  toc.setOnClickListener { showToc() }
+                  bar.addView(prev, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  bar.addView(info, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  bar.addView(next, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  bar.addView(toc, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  root.addView(bar)
+                  setContentView(root)
+                  go(page)
+              }
+
+              private fun go(p: Int) {
+                  if (total == 0) return
+                  page = p.coerceIn(1, total)
+                  info.text = page.toString() + " / " + total
+                  val name = String.format("p%03d.jpg", page)
+                  val html = "<html><body style='margin:0;background:#111'>" +
+                      "<img src='file:///android_asset/guide/" + name + "' style='width:100%'/>" +
+                      "<div style='color:#999;font-size:12px;padding:6px'>出處:華曜出版《秀逗魔導士 完全攻略本》," +
+                      "掃描檔來自 archive.org/details/rp-001 (公開資料)</div></body></html>"
+                  web.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
+              }
+
+              private fun showToc() {
+                  val items = ArrayList<String>()
+                  val pages = ArrayList<Int>()
+                  try {
+                      assets.open("guide_toc.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                          for (l in lines) {
+                              val bar = l.indexOf('|')
+                              if (bar <= 0) continue
+                              val n = l.substring(0, bar).trim().toIntOrNull() ?: continue
+                              pages.add(n)
+                              items.add(l.substring(bar + 1) + "  (第 " + n + " 頁)")
+                          }
+                      }
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  AlertDialog.Builder(this)
+                      .setTitle("攻略目錄")
+                      .setItems(items.toTypedArray()) { _, i -> go(pages[i]) }
+                      .show()
               }
           }
           __SSFILE_EOF__
@@ -490,7 +833,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v2.0 (含 AI)"
+                  title.text = "SS 日文即時翻譯 v2.1 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -562,6 +905,9 @@ jobs:
                   })
                   root.addView(gEdit)
 
+                  root.addView(makeButton("📖 開啟攻略本 (華曜版)") {
+                      startActivity(Intent(this, GuideActivity::class.java))
+                  })
                   root.addView(makeButton("③ 啟動翻譯懸浮按鈕") { startCapture() })
                   root.addView(makeButton("停止翻譯服務") { stopService() })
 
@@ -1443,6 +1789,7 @@ jobs:
                       v.invalidate()
                   }
                   hideSubtitle()
+                  hideGuideHint()
               }
 
               // ---------------------------------------------------------------- 擷取畫面
@@ -1849,6 +2196,15 @@ jobs:
                           return translateText(tr, jp, "both")
                       }
                   }
+                  // 句子很長 (超過 45 字) 才拆開翻,短的前後句一起翻,語氣才會連貫
+                  val parts = jp.split(Regex("(?<=[。！？!?…])")).map { x -> x.trim() }.filter { x -> x.isNotEmpty() }
+                  if (parts.size > 1 && jp.length > 45) {
+                      return parts.joinToString("") { x -> translateOne(tr, x, engine) }
+                  }
+                  return translateOne(tr, jp, engine)
+              }
+
+              private fun translateOne(tr: Translator, jp: String, engine: String): String {
                   val g = Glossary.protect(applicationContext, jp)
                   var protectedResult: String? = null
                   if (g.terms.isNotEmpty()) {
@@ -2120,6 +2476,29 @@ jobs:
                       }
                       prefs.edit().putString("engine", next).apply()
                   })
+                  addRow({ "顯示翻譯範圍 (3 秒)" }, {
+                      closeMenu()
+                      val mt = readMetrics()
+                      val rows = regionRows(mt[1])
+                      val v = overlay ?: createOverlay()
+                      v.items = emptyList()
+                      v.region = Rect(0, rows[0], mt[0], rows[1])
+                      v.visibility = View.VISIBLE
+                      v.invalidate()
+                      ui.postDelayed({
+                          v.region = null
+                          v.invalidate()
+                      }, 3000)
+                  })
+                  addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
+                      prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
+                  })
+                  addRow({ "開啟攻略本" }, {
+                      closeMenu()
+                      val gi = Intent(this, GuideActivity::class.java)
+                      gi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      startActivity(gi)
+                  })
                   addRow({ "顯示辨識到的日文:" + (if (prefs.getBoolean("show_orig", true)) "開" else "關") }, {
                       val now = !prefs.getBoolean("show_orig", true)
                       prefs.edit().putBoolean("show_orig", now).apply()
@@ -2339,6 +2718,7 @@ jobs:
 
               private fun showResult(list: List<ResultView.Item>) {
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  showGuideHint(list.joinToString(" ") { x -> x.orig + " " + x.text })
                   if (autoOn()) {
                       // 自動模式:用可以移動、調整大小的譯文框,不蓋住原文
                       val o = overlay
@@ -2365,9 +2745,100 @@ jobs:
                   v.invalidate()
               }
 
+              // ---------------------------------------------------------------- 攻略提示
+
+              private var guideChip: TextView? = null
+              private var guideIndex: List<Triple<String, Int, String>>? = null
+
+              private fun loadGuideIndex(): List<Triple<String, Int, String>> {
+                  val g = guideIndex
+                  if (g != null) return g
+                  val out = ArrayList<Triple<String, Int, String>>()
+                  try {
+                      assets.open("guide_index.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                          for (l in lines) {
+                              if (l.startsWith("#")) continue
+                              val eq = l.indexOf('=')
+                              val bar = l.indexOf('|')
+                              if (eq <= 0 || bar <= eq) continue
+                              val n = l.substring(eq + 1, bar).trim().toIntOrNull() ?: continue
+                              out.add(Triple(l.substring(0, eq).trim(), n, l.substring(bar + 1).trim()))
+                          }
+                      }
+                  } catch (e: Exception) {
+                      // 沒有索引就不提示
+                  }
+                  guideIndex = out
+                  return out
+              }
+
+              private fun hideGuideHint() {
+                  val c = guideChip
+                  if (c != null) {
+                      ui.removeCallbacks(hideChipRun)
+                      try {
+                          wm.removeView(c)
+                      } catch (e: Exception) {
+                          // ignore
+                      }
+                  }
+                  guideChip = null
+              }
+
+              private val hideChipRun = Runnable { hideGuideHint() }
+
+              private fun showGuideHint(text: String) {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  if (!prefs.getBoolean("guide_hint", true)) return
+                  val hits = ArrayList<Triple<String, Int, String>>()
+                  for (e in loadGuideIndex()) {
+                      if (text.contains(e.first) && hits.none { x -> x.third == e.third }) {
+                          hits.add(e)
+                          if (hits.size >= 2) break
+                      }
+                  }
+                  if (hits.isEmpty()) {
+                      hideGuideHint()
+                      return
+                  }
+                  hideGuideHint()
+                  val tv = TextView(this)
+                  tv.text = "📖 攻略:" + hits.joinToString("、") { x -> x.third }
+                  tv.setTextColor(0xFFFFFFFF.toInt())
+                  tv.textSize = 14f
+                  tv.setPadding(dp(12), dp(8), dp(12), dp(8))
+                  tv.setBackgroundColor(0xE61565C0.toInt())
+                  val page = hits[0].second
+                  tv.setOnClickListener {
+                      val i = Intent(this, GuideActivity::class.java)
+                      i.putExtra("page", page)
+                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      startActivity(i)
+                      hideGuideHint()
+                  }
+                  val lp = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.END
+                  lp.x = dp(8)
+                  lp.y = dp(8)
+                  try {
+                      wm.addView(tv, lp)
+                      guideChip = tv
+                      ui.postDelayed(hideChipRun, 12000)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+              }
+
               // ---------------------------------------------------------------- 結束
 
               override fun onDestroy() {
+                  hideGuideHint()
                   closeMenu()
                   try {
                       val sv = subtitle
@@ -2474,6 +2945,30 @@ jobs:
           rootProject.name = "SSTranslator"
           include(":app")
           __SSFILE_EOF__
+
+      - name: Prepare guide images (攻略本圖片, guide.zip 優先, 沒有就從 archive.org 下載)
+        continue-on-error: true
+        run: |
+          G=app/src/main/assets/guide
+          mkdir -p "$G"
+          if [ -f guide.zip ]; then
+            unzip -o -j guide.zip -d "$G"
+          else
+            echo "guide.zip not found, downloading from archive.org"
+            sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils imagemagick
+            N=$(curl -fsSL --retry 3 https://archive.org/metadata/rp-001 | python3 -c "import sys,json;d=json.load(sys.stdin);print([f['name'] for f in d['files'] if f['name'].lower().endswith('.pdf')][0])")
+            echo "PDF name: $N"
+            curl -fsSL --retry 3 -G "https://archive.org/download/rp-001/$(python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))" "$N")" -o /tmp/guide.pdf
+            mkdir -p /tmp/gimg
+            pdfimages -j /tmp/guide.pdf /tmp/gimg/g
+            i=0
+            for f in $(ls /tmp/gimg/g-*.jpg | sort); do
+              i=$((i+1))
+              out=$(printf "$G/p%03d.jpg" $i)
+              convert "$f" -resize 640x -quality 55 "$out"
+            done
+          fi
+          ls "$G" | wc -l
 
       - name: Download OpenCC dictionaries (簡轉繁字典)
         run: |
