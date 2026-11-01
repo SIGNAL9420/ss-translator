@@ -280,6 +280,13 @@ jobs:
           <[ほホーうウっッ]{4,}=おほほほ
           <[ふフーっッ]{4,}=ふふふふ
           <かしらい=かしら
+          <ひょっとして=もしかして
+          <ひょっとすると=もしかすると
+          <ほんとー+に=本当に
+          <ほんと[ーー一]=本当
+          <へっ[?？]=えっ?
+          <持ってないとか=持っていないの
+          <持ってないの=持っていないの
           <甘いわね=考えが浅いわね
           <甘いな。=考えが浅いな。
           <甘いぜ=考えが浅いぜ
@@ -447,9 +454,9 @@ jobs:
               private fun systemPrompt(ctx: Context, vision: Boolean): String {
                   val terms = Glossary.promptTerms(ctx)
                   val base = if (vision) {
-                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。請把遊戲畫面裡的日文對白翻成自然流暢的臺灣繁體中文,語氣要符合角色。"
+                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。請把遊戲畫面裡的日文或英文對白翻成自然流暢的臺灣繁體中文,語氣要符合角色。"
                   } else {
-                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。使用者給你的日文是從遊戲畫面辨識出來的對白,可能有錯字、漏字、重複或多餘的符號," +
+                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。使用者給你的日文或英文是從遊戲畫面辨識出來的對白,可能有錯字、漏字、重複或多餘的符號," +
                           "請依上下文與遊戲設定推測正確的原文,翻成自然流暢的臺灣繁體中文,語氣要符合角色。只輸出譯文,不要解釋,不要加引號或前綴。"
                   }
                   return if (terms.isNotEmpty()) base + "\n專有名詞請固定使用以下譯法:\n" + terms else base
@@ -500,9 +507,9 @@ jobs:
                   val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
 
                   val ask = historyText(history) +
-                      "這是遊戲對白框的截圖 (可能是半透明的小字,背景雜亂)。請讀出畫面中的日文對白,並翻成臺灣繁體中文。\n" +
-                      "請嚴格用下面兩行格式輸出,不要多說別的:\n原文:<日文原文>\n譯文:<繁體中文>\n" +
-                      "如果畫面裡沒有日文對白,只輸出一個字:無"
+                      "這是遊戲對白框的截圖 (可能是半透明的小字,背景雜亂)。請讀出畫面中的日文或英文對白,並翻成臺灣繁體中文。\n" +
+                      "請嚴格用下面兩行格式輸出,不要多說別的:\n原文:<原文>\n譯文:<繁體中文>\n" +
+                      "如果畫面裡沒有日文或英文對白,只輸出一個字:無"
                   val content = JSONArray()
                   content.put(JSONObject().put("type", "text").put("text", ask))
                   content.put(
@@ -889,7 +896,7 @@ jobs:
                   root.addView(intro)
 
                   root.addView(makeButton("① 開啟「顯示在其他應用程式上層」權限") { openOverlaySettings() })
-                  root.addView(makeButton("② 下載離線翻譯模型 (只需一次,需要網路)") { downloadModel() })
+                  root.addView(makeButton("② 下載離線翻譯模型 (日文+英文,只需一次,需要網路)") { downloadModel() })
 
                   val cfg = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val tip = TextView(this)
@@ -916,6 +923,7 @@ jobs:
                               Pair("both", "線上優先,失敗時改用離線"),
                               Pair("online", "只用線上 (Google 翻譯,直接輸出繁體)"),
                               Pair("offline", "只用離線 (不用網路,品質較差)"),
+                              Pair("smart", "智慧模式 (推薦):先用 Google 翻譯,程式自動檢查,覺得怪才改用 AI,最省錢"),
                               Pair("ai", "AI 翻譯 (先辨識文字再交給 AI,需下方 AI 設定)"),
                               Pair("aiv", "AI 看圖翻譯 (把對話框截圖給 AI,最準,需視覺模型)")
                           ),
@@ -1219,8 +1227,23 @@ jobs:
                   )
                   t.downloadModelIfNeeded(DownloadConditions.Builder().build())
                       .addOnSuccessListener {
-                          status.text = "✅ 翻譯模型已就緒,之後可離線使用"
+                          status.text = "✅ 日文模型已就緒,正在下載英文模型…"
                           t.close()
+                          val e = Translation.getClient(
+                              TranslatorOptions.Builder()
+                                  .setSourceLanguage(TranslateLanguage.ENGLISH)
+                                  .setTargetLanguage(TranslateLanguage.CHINESE)
+                                  .build()
+                          )
+                          e.downloadModelIfNeeded(DownloadConditions.Builder().build())
+                              .addOnSuccessListener {
+                                  status.text = "✅ 日文、英文翻譯模型都已就緒,之後可離線使用"
+                                  e.close()
+                              }
+                              .addOnFailureListener { ex ->
+                                  status.text = "日文模型已就緒;英文模型下載失敗:" + (ex.message ?: ex.toString())
+                                  e.close()
+                              }
                       }
                       .addOnFailureListener { e ->
                           status.text = "❌ 下載失敗:" + (e.message ?: e.toString())
@@ -2455,6 +2478,45 @@ jobs:
               }
 
               // 依設定選擇翻譯方式:線上 (Google 翻譯,直接輸出繁體) / 離線 (ML Kit + 簡轉繁)
+              private fun cjkCount(s: String): Int {
+                  var n = 0
+                  for (c in s) {
+                      if (c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF') n++
+                  }
+                  return n
+              }
+
+              private fun bigrams(s: String): Set<String> {
+                  val clean = s.filter { c -> c in '\u4E00'..'\u9FFF' }
+                  val out = HashSet<String>()
+                  for (i in 0 until clean.length - 1) out.add(clean.substring(i, i + 2))
+                  return out
+              }
+
+              // 自動判斷機翻結果可不可疑:回傳原因,正常回傳 null
+              private fun suspicious(tr: Translator, jp: String, zh: String): String? {
+                  val jl = cjkCount(jp)
+                  if (jl == 0) return null
+                  if (Regex("[A-Za-z]{3,}").containsMatchIn(zh)) return "夾雜英文"
+                  val zl = zh.count { c -> c in '\u4E00'..'\u9FFF' }
+                  if (jl >= 6 && (zl < jl * 0.35 || zl > jl * 1.8)) return "長度不合"
+                  if (jl >= 10) {
+                      try {
+                          val off = translateText(tr, jp, "offline")
+                          val a = bigrams(zh)
+                          val b = bigrams(off)
+                          if (a.isNotEmpty() && b.isNotEmpty()) {
+                              val inter = a.count { x -> b.contains(x) }
+                              val union = a.size + b.size - inter
+                              if (union > 0 && inter.toFloat() / union < 0.12f) return "兩種翻譯差太多"
+                          }
+                      } catch (e: Exception) {
+                          // 離線模型不能用就不比對
+                      }
+                  }
+                  return null
+              }
+
               private val aiHistory = java.util.ArrayDeque<String>()
 
               private fun rememberAi(zh: String) {
@@ -2464,6 +2526,25 @@ jobs:
 
               private fun translateText(tr: Translator, jp0: String, engine: String): String {
                   val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
+                  if (engine == "smart") {
+                      val z1 = translateText(tr, jp0, "both")
+                      val why = suspicious(tr, jp0, z1)
+                      if (why == null) {
+                          rememberAi(z1)
+                          return z1
+                      }
+                      val cfg = AiClient.config(applicationContext)
+                      if (cfg == null || cfg.key.isEmpty()) return z1
+                      try {
+                          val z = AiClient.translateText(applicationContext, jp0, aiHistory.toList())
+                          val fixed = Glossary.fix(applicationContext, z)
+                          rememberAi(fixed)
+                          return fixed
+                      } catch (e: Exception) {
+                          ui.post { toast("AI 失敗,先用一般翻譯:" + (e.message ?: e.toString())) }
+                          return z1
+                      }
+                  }
                   if (engine == "ai" || engine == "aiv") {
                       try {
                           val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
@@ -2507,13 +2588,37 @@ jobs:
                           throw IllegalStateException("線上翻譯失敗:" + (err?.message ?: err?.toString() ?: "沒有回應") + " (請確認網路)")
                       }
                   }
-                  val zh = Tasks.await(tr.translate(jp), 40, TimeUnit.SECONDS)
+                  val useEn = cjkCount(jp) == 0
+                  val real = if (useEn) enTranslator() else tr
+                  if (useEn) {
+                      try {
+                          Tasks.await(real.downloadModelIfNeeded(DownloadConditions.Builder().build()), 90, TimeUnit.SECONDS)
+                      } catch (e: Exception) {
+                          throw IllegalStateException("英文離線模型還沒下載,請回主畫面按「②」")
+                      }
+                  }
+                  val zh = Tasks.await(real.translate(jp), 40, TimeUnit.SECONDS)
                   return Traditionalizer.convert(zh)
+              }
+
+              private var enTr: Translator? = null
+
+              private fun enTranslator(): Translator {
+                  val e = enTr
+                  if (e != null) return e
+                  val n = Translation.getClient(
+                      TranslatorOptions.Builder()
+                          .setSourceLanguage(TranslateLanguage.ENGLISH)
+                          .setTargetLanguage(TranslateLanguage.CHINESE)
+                          .build()
+                  )
+                  enTr = n
+                  return n
               }
 
               private fun onlineTranslate(text: String): String {
                   val url = URL(
-                      "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=zh-TW&dt=t&q=" +
+                      "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-TW&dt=t&q=" +
                           URLEncoder.encode(text, "UTF-8")
                   )
                   val c = url.openConnection() as HttpURLConnection
@@ -2778,6 +2883,7 @@ jobs:
                   fun engineName(): String = when (prefs.getString("engine", "both")) {
                       "online" -> "只用線上"
                       "offline" -> "只用離線"
+                      "smart" -> "智慧 (可疑才用 AI)"
                       "ai" -> "AI (辨識文字後翻)"
                       "aiv" -> "AI 看圖 (最準)"
                       else -> "線上優先,失敗改離線"
@@ -2791,7 +2897,8 @@ jobs:
                   addRow({ "翻譯方式:" + engineName() }, {
                       val next = when (prefs.getString("engine", "both")) {
                           "both" -> "online"
-                          "online" -> "ai"
+                          "online" -> "smart"
+                          "smart" -> "ai"
                           "ai" -> "aiv"
                           "aiv" -> "offline"
                           else -> "both"
@@ -2925,12 +3032,18 @@ jobs:
                   return out
               }
 
+              // 這一行要不要翻:日文至少 2 個字,或是像樣的英文 (至少 5 個字母,字母佔大部分)
               private fun isJapanese(s: String): Boolean {
                   var n = 0
+                  var latin = 0
                   for (c in s) {
                       if (c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF') n++
+                      if (c in 'A'..'Z' || c in 'a'..'z') latin++
                   }
-                  return n >= 2
+                  if (n >= 2) return true
+                  val body = s.count { c -> !c.isWhitespace() && c !in ".,!?'\"-:;…" }
+                  return n == 0 && latin >= 5 && body > 0 && latin * 10 >= body * 7 &&
+                      Regex("[A-Za-z]{3,}").containsMatchIn(s)
               }
 
               // 不同版本辨識到同一個位置的文字只留一份 (留比較長的)
@@ -3216,6 +3329,7 @@ jobs:
                   try {
                       recognizer?.close()
                       translator?.close()
+                      enTr?.close()
                   } catch (e: Exception) {
                       // ignore
                   }
