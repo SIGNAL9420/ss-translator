@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 2
+                  versionName = "2.0-AI"
               }
 
               buildTypes {
@@ -149,6 +149,165 @@ jobs:
 
           # --- 遊戲選單 ---
           表通り=大街
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/AiClient.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+          import android.graphics.Bitmap
+          import android.util.Base64
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.io.ByteArrayOutputStream
+          import java.net.HttpURLConnection
+          import java.net.URL
+
+          /**
+           * 呼叫 OpenAI 格式的 AI 服務 (Gemini、Groq、OpenAI、其他相容服務都可以)。
+           * 網址、金鑰、模型名稱由使用者在主畫面的 AI 設定填入。
+           */
+          object AiClient {
+
+              class Config(val url: String, val key: String, val model: String)
+
+              fun config(ctx: Context): Config? {
+                  val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val url = (p.getString("ai_url", "https://generativelanguage.googleapis.com/v1beta/openai/") ?: "").trim()
+                  val key = (p.getString("ai_key", "") ?: "").trim()
+                  val model = (p.getString("ai_model", "gemini-2.0-flash") ?: "").trim()
+                  if (url.isEmpty() || model.isEmpty()) return null
+                  return Config(url, key, model)
+              }
+
+              private fun endpoint(base: String): String {
+                  val b = base.trim().trimEnd('/')
+                  return if (b.endsWith("/chat/completions")) b else b + "/chat/completions"
+              }
+
+              private fun chat(cfg: Config, messages: JSONArray): String {
+                  val body = JSONObject()
+                  body.put("model", cfg.model)
+                  body.put("messages", messages)
+                  body.put("temperature", 0.2)
+                  val c = URL(endpoint(cfg.url)).openConnection() as HttpURLConnection
+                  c.requestMethod = "POST"
+                  c.connectTimeout = 8000
+                  c.readTimeout = 40000
+                  c.doOutput = true
+                  c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                  if (cfg.key.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer " + cfg.key)
+                  try {
+                      c.outputStream.use { os -> os.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                      val code = c.responseCode
+                      val stream = if (code in 200..299) c.inputStream else c.errorStream
+                      val text = stream?.bufferedReader(Charsets.UTF_8)?.use { r -> r.readText() } ?: ""
+                      if (code !in 200..299) {
+                          throw IllegalStateException("AI 回應 HTTP " + code + ":" + text.take(200))
+                      }
+                      val choices = JSONObject(text).getJSONArray("choices")
+                      val msg = choices.getJSONObject(0).getJSONObject("message")
+                      if (msg.isNull("content")) return ""
+                      return msg.optString("content", "").trim()
+                  } finally {
+                      c.disconnect()
+                  }
+              }
+
+              private fun systemPrompt(ctx: Context, vision: Boolean): String {
+                  val terms = Glossary.promptTerms(ctx)
+                  val base = if (vision) {
+                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。請把遊戲畫面裡的日文對白翻成自然流暢的臺灣繁體中文,語氣要符合角色。"
+                  } else {
+                      "你是日本遊戲《秀逗魔導士 (Slayers)》的專業翻譯。使用者給你的日文是從遊戲畫面辨識出來的對白,可能有錯字、漏字、重複或多餘的符號," +
+                          "請依上下文與遊戲設定推測正確的原文,翻成自然流暢的臺灣繁體中文,語氣要符合角色。只輸出譯文,不要解釋,不要加引號或前綴。"
+                  }
+                  return if (terms.isNotEmpty()) base + "\n專有名詞請固定使用以下譯法:\n" + terms else base
+              }
+
+              private fun historyText(history: List<String>): String {
+                  if (history.isEmpty()) return ""
+                  val sb = StringBuilder()
+                  sb.append("前面已經翻好的對白 (只供參考語氣與稱呼,不要重翻):\n")
+                  for (h in history) {
+                      sb.append("・").append(h).append('\n')
+                  }
+                  sb.append('\n')
+                  return sb.toString()
+              }
+
+              private fun clean(s: String): String {
+                  return s.trim()
+                      .removePrefix("譯文:")
+                      .removePrefix("譯文：")
+                      .trim()
+                      .trim('"')
+                      .trim()
+              }
+
+              // 純文字翻譯:把辨識到的日文交給 AI
+              fun translateText(ctx: Context, jp: String, history: List<String>): String {
+                  val cfg = config(ctx) ?: throw IllegalStateException("還沒設定 AI,請到主畫面的「AI 設定」填入")
+                  val msgs = JSONArray()
+                  msgs.put(JSONObject().put("role", "system").put("content", systemPrompt(ctx, false)))
+                  msgs.put(JSONObject().put("role", "user").put("content", historyText(history) + "請翻譯這句:\n" + jp))
+                  val out = clean(chat(cfg, msgs))
+                  if (out.isEmpty()) throw IllegalStateException("AI 沒有回傳內容")
+                  return out
+              }
+
+              // 看圖翻譯:直接把對白框的截圖交給 AI。回傳 (日文原文, 中文譯文),畫面沒有日文時回傳 null
+              fun translateImage(ctx: Context, bmp: Bitmap, history: List<String>): Pair<String, String>? {
+                  val cfg = config(ctx) ?: throw IllegalStateException("還沒設定 AI,請到主畫面的「AI 設定」填入")
+                  val src = if (bmp.width > 1280) {
+                      Bitmap.createScaledBitmap(bmp, 1280, (bmp.height * 1280L / bmp.width).toInt(), true)
+                  } else {
+                      bmp
+                  }
+                  val bos = ByteArrayOutputStream()
+                  src.compress(Bitmap.CompressFormat.JPEG, 85, bos)
+                  if (src !== bmp) src.recycle()
+                  val b64 = Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+
+                  val ask = historyText(history) +
+                      "這是遊戲對白框的截圖 (可能是半透明的小字,背景雜亂)。請讀出畫面中的日文對白,並翻成臺灣繁體中文。\n" +
+                      "請嚴格用下面兩行格式輸出,不要多說別的:\n原文:<日文原文>\n譯文:<繁體中文>\n" +
+                      "如果畫面裡沒有日文對白,只輸出一個字:無"
+                  val content = JSONArray()
+                  content.put(JSONObject().put("type", "text").put("text", ask))
+                  content.put(
+                      JSONObject().put("type", "image_url")
+                          .put("image_url", JSONObject().put("url", "data:image/jpeg;base64," + b64))
+                  )
+                  val msgs = JSONArray()
+                  msgs.put(JSONObject().put("role", "system").put("content", systemPrompt(ctx, true)))
+                  msgs.put(JSONObject().put("role", "user").put("content", content))
+                  return parseImageReply(chat(cfg, msgs))
+              }
+
+              private fun parseImageReply(out: String): Pair<String, String>? {
+                  val t = out.trim()
+                  if (t == "無" || t == "无" || t.isEmpty()) return null
+                  val orig = StringBuilder()
+                  val zh = StringBuilder()
+                  var cur = 0
+                  for (line in t.split('\n')) {
+                      val l = line.trim()
+                      if (l.startsWith("原文:") || l.startsWith("原文：")) {
+                          cur = 1
+                          orig.append(l.substring(3).trim())
+                      } else if (l.startsWith("譯文:") || l.startsWith("譯文：")) {
+                          cur = 2
+                          zh.append(l.substring(3).trim())
+                      } else if (l.isNotEmpty()) {
+                          if (cur == 1) orig.append(l) else if (cur == 2) zh.append('\n').append(l)
+                      }
+                  }
+                  var z = zh.toString().trim()
+                  if (z.isEmpty()) z = clean(t)
+                  if (z.isEmpty() || z == "無") return null
+                  return Pair(orig.toString().trim(), z)
+              }
+          }
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/Glossary.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
@@ -272,6 +431,15 @@ jobs:
                   s = Regex("([\\u4E00-\\u9FFF])[＝=・]([\\u4E00-\\u9FFF])").replace(s, "\$1·\$2")
                   return s
               }
+
+              // 給 AI 看的名詞對照表 (每行 日文=中文)
+              fun promptTerms(ctx: Context): String {
+                  val sb = StringBuilder()
+                  for (e in merged(ctx).entries) {
+                      sb.append(e.jp).append('=').append(e.zh).append('\n')
+                  }
+                  return sb.toString().trim()
+              }
           }
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/MainActivity.kt' <<'__SSFILE_EOF__'
@@ -322,7 +490,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯"
+                  title.text = "SS 日文即時翻譯 v2.0 (含 AI)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -331,7 +499,7 @@ jobs:
                       "辨識與翻譯都在手機本機完成。\n" +
                       "• 自動模式:字幕跑完停住後自動翻譯,譯文顯示在翻譯範圍的下方\n" +
                       "• 短按懸浮按鈕:立刻翻譯一次\n" +
-                      "• 長按懸浮按鈕:清除譯文\n" +
+                      "• 長按懸浮按鈕:開啟設定選單 (切換自動/手動、離線/線上、調整譯文框…)\n" +
                       "• 拖曳懸浮按鈕:移動位置\n" +
                       "• 使用線上翻譯時,辨識到的日文會傳到 Google 伺服器;只想完全離線請選「只用離線」"
                   intro.setPadding(0, dp(8), 0, dp(12))
@@ -364,11 +532,15 @@ jobs:
                           listOf(
                               Pair("both", "線上優先,失敗時改用離線"),
                               Pair("online", "只用線上 (Google 翻譯,直接輸出繁體)"),
-                              Pair("offline", "只用離線 (不用網路,品質較差)")
+                              Pair("offline", "只用離線 (不用網路,品質較差)"),
+                              Pair("ai", "AI 翻譯 (先辨識文字再交給 AI,需下方 AI 設定)"),
+                              Pair("aiv", "AI 看圖翻譯 (把對話框截圖給 AI,最準,需視覺模型)")
                           ),
                           cfg
                       )
                   )
+
+                  root.addView(makeAiSettings(cfg))
 
                   val gTitle = TextView(this)
                   gTitle.text = "自訂專有名詞 (每行一條,格式:日文=中文)。要修正翻錯的詞,用「>錯的譯法=正確譯法」。這裡的設定優先於內建名詞表。"
@@ -411,6 +583,54 @@ jobs:
                   val sv = ScrollView(this)
                   sv.addView(root)
                   setContentView(sv)
+              }
+
+              private fun makeField(hint: String, key: String, cfg: android.content.SharedPreferences, def: String): EditText {
+                  val e = EditText(this)
+                  e.hint = hint
+                  e.setSingleLine(true)
+                  e.setText(cfg.getString(key, def))
+                  e.addTextChangedListener(object : TextWatcher {
+                      override fun afterTextChanged(s: Editable?) {
+                          cfg.edit().putString(key, s?.toString()?.trim() ?: "").apply()
+                      }
+
+                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                  })
+                  return e
+              }
+
+              private fun makeAiSettings(cfg: android.content.SharedPreferences): LinearLayout {
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  val tv = TextView(this)
+                  tv.text = "AI 設定 (用 AI 翻譯才需要填;辨識到的日文或截圖會傳給該服務)。網址需是 OpenAI 格式。"
+                  tv.setPadding(0, dp(12), 0, 0)
+                  box.addView(tv)
+                  val url = makeField("網址", "ai_url", cfg, "https://generativelanguage.googleapis.com/v1beta/openai/")
+                  val key = makeField("API 金鑰 (到 aistudio.google.com 免費申請)", "ai_key", cfg, "")
+                  val model = makeField("模型名稱", "ai_model", cfg, "gemini-2.0-flash")
+                  box.addView(url)
+                  box.addView(key)
+                  box.addView(model)
+                  val res = TextView(this)
+                  box.addView(makeButton("測試 AI 連線") {
+                      res.text = "測試中…"
+                      val ctx = applicationContext
+                      Thread {
+                          val msg = try {
+                              val z = AiClient.translateText(ctx, "魔導士リナ・インバースが竜破斬を唱えた。", emptyList())
+                              "✅ 成功:" + z
+                          } catch (e: Exception) {
+                              "❌ " + (e.message ?: e.toString())
+                          }
+                          runOnUiThread { res.text = msg }
+                      }.start()
+                  })
+                  box.addView(res)
+                  return box
               }
 
               private fun makeSlider(label: String, key: String, def: Int, cfg: android.content.SharedPreferences): LinearLayout {
@@ -654,6 +874,138 @@ jobs:
               }
           }
           __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/SubtitleView.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Paint
+          import android.graphics.Path
+          import android.graphics.RectF
+          import android.text.Layout
+          import android.text.StaticLayout
+          import android.text.TextPaint
+          import android.util.TypedValue
+          import android.view.MotionEvent
+          import android.view.View
+
+          /**
+           * 可以用手指移動、調整大小的譯文框 (自動翻譯模式使用)。
+           * 拖曳框的任何地方 = 移動;拖曳右下角的三角形 = 調整大小。
+           * 文字會自動縮小到剛好放得進框裡。
+           */
+          class SubtitleView(context: Context) : View(context) {
+
+              var zh: String = ""
+              var orig: String = ""
+              var showOrig: Boolean = true
+
+              // 手指拖曳時通知 service,由它更新視窗位置並儲存
+              var onMove: ((Int, Int) -> Unit)? = null
+              var onResize: ((Int, Int) -> Unit)? = null
+              var onFinish: (() -> Unit)? = null
+
+              private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xE6101820.toInt()
+              }
+              private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFFFFF.toInt()
+              }
+              private val origPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFD54F.toInt()
+              }
+              private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xCCFFFFFF.toInt()
+              }
+
+              private var mode = 0
+              private var lastX = 0f
+              private var lastY = 0f
+
+              private fun sp(v: Float): Float =
+                  TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
+
+              private fun dp(v: Float): Float =
+                  TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics)
+
+              private fun makeLayout(paint: TextPaint, text: String, size: Float, width: Int): StaticLayout {
+                  paint.textSize = size
+                  return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+                      .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                      .build()
+              }
+
+              override fun onDraw(canvas: Canvas) {
+                  super.onDraw(canvas)
+                  val w = width.toFloat()
+                  val h = height.toFloat()
+                  canvas.drawRoundRect(RectF(0f, 0f, w, h), dp(8f), dp(8f), bgPaint)
+
+                  val pad = dp(8f)
+                  val inner = maxOf(1, (w - 2 * pad).toInt())
+                  val minSize = sp(10f)
+                  val withOrig = showOrig && orig.isNotEmpty()
+
+                  var size = sp(26f)
+                  var layout = makeLayout(textPaint, zh, size, inner)
+                  var oLayout: StaticLayout? = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(9f)), inner) else null
+                  while (layout.height + (oLayout?.height ?: 0) + 2 * pad > h && size > minSize) {
+                      size -= 1f
+                      layout = makeLayout(textPaint, zh, size, inner)
+                      oLayout = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(9f)), inner) else null
+                  }
+
+                  val ol = oLayout
+                  canvas.save()
+                  canvas.translate(pad, pad)
+                  if (ol != null) {
+                      ol.draw(canvas)
+                      canvas.translate(0f, ol.height.toFloat())
+                  }
+                  layout.draw(canvas)
+                  canvas.restore()
+
+                  // 右下角的調整大小把手
+                  val hs = dp(22f)
+                  val path = Path()
+                  path.moveTo(w - 2f, h - hs)
+                  path.lineTo(w - 2f, h - 2f)
+                  path.lineTo(w - hs, h - 2f)
+                  path.close()
+                  canvas.drawPath(path, handlePaint)
+              }
+
+              override fun onTouchEvent(e: MotionEvent): Boolean {
+                  when (e.action) {
+                      MotionEvent.ACTION_DOWN -> {
+                          val hs = dp(44f)
+                          mode = if (e.x > width - hs && e.y > height - hs) 2 else 1
+                          lastX = e.rawX
+                          lastY = e.rawY
+                          return true
+                      }
+                      MotionEvent.ACTION_MOVE -> {
+                          val dx = (e.rawX - lastX).toInt()
+                          val dy = (e.rawY - lastY).toInt()
+                          lastX = e.rawX
+                          lastY = e.rawY
+                          if (mode == 1) {
+                              onMove?.invoke(dx, dy)
+                          } else if (mode == 2) {
+                              onResize?.invoke(dx, dy)
+                          }
+                          return true
+                      }
+                      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                          mode = 0
+                          onFinish?.invoke()
+                          return true
+                      }
+                  }
+                  return true
+              }
+          }
+          __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/Traditionalizer.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
 
@@ -810,6 +1162,7 @@ jobs:
           import android.view.MotionEvent
           import android.view.View
           import android.view.WindowManager
+          import android.widget.LinearLayout
           import android.widget.TextView
           import android.widget.Toast
           import com.google.android.gms.tasks.Tasks
@@ -859,6 +1212,8 @@ jobs:
               private var button: TextView? = null
               private var buttonLp: WindowManager.LayoutParams? = null
               private var overlay: ResultView? = null
+              private var subtitle: SubtitleView? = null
+              private var menuView: View? = null
 
               private var recognizer: TextRecognizer? = null
               private var translator: Translator? = null
@@ -1024,7 +1379,11 @@ jobs:
                   var startX = 0
                   var startY = 0
                   var dragging = false
-                  var downTime = 0L
+                  var longFired = false
+                  val longRun = Runnable {
+                      longFired = true
+                      showMenu()
+                  }
 
                   tv.setOnTouchListener { _, e ->
                       when (e.action) {
@@ -1034,13 +1393,15 @@ jobs:
                               startX = lp.x
                               startY = lp.y
                               dragging = false
-                              downTime = e.eventTime
+                              longFired = false
+                              ui.postDelayed(longRun, 500)
                           }
                           MotionEvent.ACTION_MOVE -> {
                               val dx = e.rawX - downX
                               val dy = e.rawY - downY
                               if (!dragging && (Math.abs(dx) > dp(8) || Math.abs(dy) > dp(8))) {
                                   dragging = true
+                                  ui.removeCallbacks(longRun)
                               }
                               if (dragging) {
                                   lp.x = startX + dx.toInt()
@@ -1053,13 +1414,13 @@ jobs:
                               }
                           }
                           MotionEvent.ACTION_UP -> {
-                              if (!dragging) {
-                                  if (e.eventTime - downTime > 600) {
-                                      hideOverlay()
-                                  } else {
-                                      startCapture()
-                                  }
+                              ui.removeCallbacks(longRun)
+                              if (!dragging && !longFired) {
+                                  startCapture()
                               }
+                          }
+                          MotionEvent.ACTION_CANCEL -> {
+                              ui.removeCallbacks(longRun)
                           }
                       }
                       true
@@ -1075,10 +1436,13 @@ jobs:
               }
 
               private fun hideOverlay() {
-                  val v = overlay ?: return
-                  v.items = emptyList()
-                  v.region = null
-                  v.invalidate()
+                  val v = overlay
+                  if (v != null) {
+                      v.items = emptyList()
+                      v.region = null
+                      v.invalidate()
+                  }
+                  hideSubtitle()
               }
 
               // ---------------------------------------------------------------- 擷取畫面
@@ -1265,7 +1629,20 @@ jobs:
                   val tr = translator ?: throw IllegalStateException("translator")
                   val rec = recognizer ?: throw IllegalStateException("recognizer")
 
-                  if (engine != "online") {
+                  if (engine == "aiv") {
+                      try {
+                          ui.post { setLabel("AI") }
+                          val r = AiClient.translateImage(applicationContext, src, aiHistory.toList())
+                          if (r == null) return emptyList()
+                          val zh = Glossary.fix(applicationContext, r.second)
+                          rememberAi(zh)
+                          val rect = Rect(0, topOffset, src.width, topOffset + src.height)
+                          return listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 3), r.first))
+                      } catch (e: Exception) {
+                          ui.post { toast("AI 看圖失敗,改用文字辨識:" + (e.message ?: e.toString())) }
+                      }
+                  }
+                  if (engine != "online" && engine != "ai" && engine != "aiv") {
                       try {
                           Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()), 90, TimeUnit.SECONDS)
                       } catch (e: Exception) {
@@ -1275,22 +1652,22 @@ jobs:
                       }
                   }
 
-                  // 同一張畫面做三種版本:原圖、放大加強對比、放大反相加強對比
+                  // 同一張畫面做多種版本再各自辨識:原圖、放大加強對比、放大反相、只留金色字
                   val variants = ArrayList<Pair<Bitmap, Float>>()
                   variants.add(Pair(src, 1f))
                   variants.add(Pair(enhance(src, 2f, 1.8f), 2f))
                   variants.add(Pair(enhance(src, 2f, -1.8f), 2f))
+                  variants.add(Pair(goldMask(src, 2f), 2f))
 
                   val raw = StringBuilder()
-                  val blocks = ArrayList<Blk>()
-                  var step = 0
+                  val cands = ArrayList<Cand>()
                   try {
-                      for (v in variants) {
-                          step++
-                          val stepNow = step
-                          ui.post { setLabel(stepNow.toString() + "/3") }
-                          val bmp = v.first
-                          val scale = v.second
+                      for (vi in variants.indices) {
+                          val stepNow = vi + 1
+                          val total = variants.size
+                          ui.post { setLabel(stepNow.toString() + "/" + total) }
+                          val bmp = variants[vi].first
+                          val scale = variants[vi].second
                           val text = try {
                               Tasks.await(rec.process(InputImage.fromBitmap(bmp, 0)), 40, TimeUnit.SECONDS)
                           } catch (e: Exception) {
@@ -1299,17 +1676,18 @@ jobs:
                           if (text == null) continue
                           raw.append(text.text.replace("\n", " ")).append(" | ")
                           for (b in text.textBlocks) {
-                              val box = b.boundingBox ?: continue
-                              val jp = b.lines.joinToString("") { it.text }.replace(" ", "").replace("\u3000", "")
-                              if (!isJapanese(jp)) continue
-                              val r = Rect(
-                                  (box.left / scale).toInt(),
-                                  (box.top / scale).toInt() + topOffset,
-                                  (box.right / scale).toInt(),
-                                  (box.bottom / scale).toInt() + topOffset
-                              )
-                              val lineCount = maxOf(1, b.lines.size)
-                              addBlock(blocks, Blk(r, jp, maxOf(1, r.height() / lineCount)))
+                              for (ln in b.lines) {
+                                  val box = ln.boundingBox ?: continue
+                                  val jp = ln.text.replace(" ", "").replace("　", "")
+                                  if (!isJapanese(jp)) continue
+                                  val r = Rect(
+                                      (box.left / scale).toInt(),
+                                      (box.top / scale).toInt() + topOffset,
+                                      (box.right / scale).toInt(),
+                                      (box.bottom / scale).toInt() + topOffset
+                                  )
+                                  cands.add(Cand(vi, Blk(r, jp, maxOf(1, r.height()))))
+                              }
                           }
                       }
                   } finally {
@@ -1318,6 +1696,7 @@ jobs:
                       }
                   }
                   lastRaw = raw.toString()
+                  val blocks = pickBestRows(cands)
 
                   val out = ArrayList<ResultView.Item>()
                   ui.post { setLabel("譯") }
@@ -1451,7 +1830,25 @@ jobs:
               }
 
               // 依設定選擇翻譯方式:線上 (Google 翻譯,直接輸出繁體) / 離線 (ML Kit + 簡轉繁)
+              private val aiHistory = java.util.ArrayDeque<String>()
+
+              private fun rememberAi(zh: String) {
+                  aiHistory.addLast(zh)
+                  while (aiHistory.size > 3) aiHistory.removeFirst()
+              }
+
               private fun translateText(tr: Translator, jp: String, engine: String): String {
+                  if (engine == "ai" || engine == "aiv") {
+                      try {
+                          val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
+                          val fixed = Glossary.fix(applicationContext, z)
+                          rememberAi(fixed)
+                          return fixed
+                      } catch (e: Exception) {
+                          ui.post { toast("AI 翻譯失敗,改用一般翻譯:" + (e.message ?: e.toString())) }
+                          return translateText(tr, jp, "both")
+                      }
+                  }
                   val g = Glossary.protect(applicationContext, jp)
                   var protectedResult: String? = null
                   if (g.terms.isNotEmpty()) {
@@ -1502,6 +1899,302 @@ jobs:
                   } finally {
                       c.disconnect()
                   }
+              }
+
+              private class Cand(val v: Int, val blk: Blk)
+
+              // 把所有版本辨識到的「行」依高度分成幾列,每一列只採用字數最多的那個版本,避免不同版本的碎片拼成亂碼
+              private fun pickBestRows(cands: List<Cand>): ArrayList<Blk> {
+                  val sorted = cands.sortedBy { c -> c.blk.rect.centerY() }
+                  val rows = ArrayList<ArrayList<Cand>>()
+                  for (c in sorted) {
+                      val row = rows.lastOrNull { r ->
+                          Math.abs(r[0].blk.rect.centerY() - c.blk.rect.centerY()) <= maxOf(r[0].blk.lineH, c.blk.lineH) * 6 / 10
+                      }
+                      if (row != null) {
+                          row.add(c)
+                      } else {
+                          val nr = ArrayList<Cand>()
+                          nr.add(c)
+                          rows.add(nr)
+                      }
+                  }
+                  val out = ArrayList<Blk>()
+                  for (row in rows) {
+                      val score = HashMap<Int, Int>()
+                      for (c in row) {
+                          score[c.v] = (score[c.v] ?: 0) + c.blk.text.length
+                      }
+                      var bestV = -1
+                      var bestS = -1
+                      for (k in score.keys.sorted()) {
+                          val sc = score[k] ?: 0
+                          if (sc > bestS) {
+                              bestS = sc
+                              bestV = k
+                          }
+                      }
+                      for (c in row.filter { x -> x.v == bestV }.sortedBy { x -> x.blk.rect.left }) {
+                          out.add(c.blk)
+                      }
+                  }
+                  return out
+              }
+
+              // 只留下金色的字 (黑字白底),對付疊在雜亂背景上的半透明金色字幕
+              private fun goldMask(src: Bitmap, scale: Float): Bitmap {
+                  val w = (src.width * scale).toInt()
+                  val h = (src.height * scale).toInt()
+                  val scaled = Bitmap.createScaledBitmap(src, w, h, true)
+                  val px = IntArray(w * h)
+                  scaled.getPixels(px, 0, w, 0, 0, w, h)
+                  if (scaled !== src) scaled.recycle()
+                  val black = 0xFF000000.toInt()
+                  val white = 0xFFFFFFFF.toInt()
+                  for (i in px.indices) {
+                      val c = px[i]
+                      val r = (c shr 16) and 0xFF
+                      val g = (c shr 8) and 0xFF
+                      val b = c and 0xFF
+                      val gold = r > 110 && r - b > 55 && g - b > 28 && r + 10 >= g
+                      px[i] = if (gold) black else white
+                  }
+                  val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  out.setPixels(px, 0, w, 0, 0, w, h)
+                  return out
+              }
+
+              // ---------------------------------------------------------------- 可移動的譯文框 (自動模式)
+
+              private fun bringButtonToFront() {
+                  val b = button
+                  val blp = buttonLp
+                  if (b != null && blp != null) {
+                      try {
+                          wm.removeView(b)
+                          wm.addView(b, blp)
+                      } catch (e: Exception) {
+                          // ignore
+                      }
+                  }
+              }
+
+              private fun createSubtitle(): SubtitleView {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val mt = readMetrics()
+                  val rows = regionRows(mt[1])
+                  val w = prefs.getInt("sub_w", mt[0] - dp(16))
+                  val h = prefs.getInt("sub_h", dp(150))
+                  val x = prefs.getInt("sub_x", dp(8))
+                  val y = prefs.getInt("sub_y", rows[1] + dp(8))
+                  val v = SubtitleView(this)
+                  val lp = WindowManager.LayoutParams(
+                      w,
+                      h,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  lp.x = x
+                  lp.y = y
+                  v.onMove = { dx, dy ->
+                      lp.x += dx
+                      lp.y += dy
+                      wm.updateViewLayout(v, lp)
+                  }
+                  v.onResize = { dw, dh ->
+                      lp.width = maxOf(dp(120), lp.width + dw)
+                      lp.height = maxOf(dp(60), lp.height + dh)
+                      wm.updateViewLayout(v, lp)
+                  }
+                  v.onFinish = {
+                      prefs.edit()
+                          .putInt("sub_x", lp.x)
+                          .putInt("sub_y", lp.y)
+                          .putInt("sub_w", lp.width)
+                          .putInt("sub_h", lp.height)
+                          .apply()
+                  }
+                  wm.addView(v, lp)
+                  subtitle = v
+                  bringButtonToFront()
+                  return v
+              }
+
+              private fun showSubtitle(zh: String, orig: String) {
+                  val v = subtitle ?: createSubtitle()
+                  v.zh = zh
+                  v.orig = orig
+                  v.showOrig = getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("show_orig", true)
+                  v.visibility = View.VISIBLE
+                  v.invalidate()
+              }
+
+              private fun hideSubtitle() {
+                  val v = subtitle ?: return
+                  v.zh = ""
+                  v.orig = ""
+                  v.visibility = View.GONE
+              }
+
+              // ---------------------------------------------------------------- 長按懸浮球的設定選單
+
+              private fun closeMenu() {
+                  val m = menuView ?: return
+                  try {
+                      wm.removeView(m)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  menuView = null
+              }
+
+              private fun applyModeChange() {
+                  ui.removeCallbacks(stableRun)
+                  latestCrop?.recycle()
+                  latestCrop = null
+                  curSig = null
+                  doneJp = ""
+                  setLabel(baseLabel())
+                  hideOverlay()
+                  if (autoOn()) {
+                      try {
+                          ensureDisplay()
+                      } catch (e: Exception) {
+                          toast("無法擷取畫面:" + (e.message ?: e.toString()))
+                      }
+                      toast("已切換:自動翻譯")
+                  } else {
+                      toast("已切換:手動翻譯")
+                  }
+              }
+
+              private fun showMenu() {
+                  if (menuView != null) {
+                      closeMenu()
+                      return
+                  }
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  box.setPadding(dp(6), dp(6), dp(6), dp(6))
+                  val bg = GradientDrawable()
+                  bg.setColor(0xF0202830.toInt())
+                  bg.cornerRadius = dp(12).toFloat()
+                  box.background = bg
+
+                  fun addRow(label: () -> String, action: () -> Unit) {
+                      val tv = TextView(this)
+                      tv.text = label()
+                      tv.textSize = 16f
+                      tv.setTextColor(Color.WHITE)
+                      tv.setPadding(dp(14), dp(11), dp(14), dp(11))
+                      tv.setOnClickListener {
+                          action()
+                          tv.text = label()
+                      }
+                      box.addView(tv)
+                  }
+
+                  fun engineName(): String = when (prefs.getString("engine", "both")) {
+                      "online" -> "只用線上"
+                      "offline" -> "只用離線"
+                      "ai" -> "AI (辨識文字後翻)"
+                      "aiv" -> "AI 看圖 (最準)"
+                      else -> "線上優先,失敗改離線"
+                  }
+
+                  addRow({ "翻譯時機:" + (if (autoOn()) "自動" else "手動") }, {
+                      val next = if (autoOn()) "manual" else "auto"
+                      prefs.edit().putString("mode", next).apply()
+                      applyModeChange()
+                  })
+                  addRow({ "翻譯方式:" + engineName() }, {
+                      val next = when (prefs.getString("engine", "both")) {
+                          "both" -> "online"
+                          "online" -> "ai"
+                          "ai" -> "aiv"
+                          "aiv" -> "offline"
+                          else -> "both"
+                      }
+                      prefs.edit().putString("engine", next).apply()
+                  })
+                  addRow({ "顯示辨識到的日文:" + (if (prefs.getBoolean("show_orig", true)) "開" else "關") }, {
+                      val now = !prefs.getBoolean("show_orig", true)
+                      prefs.edit().putBoolean("show_orig", now).apply()
+                      val sv = subtitle
+                      if (sv != null) {
+                          sv.showOrig = now
+                          sv.invalidate()
+                      }
+                      val ov = overlay
+                      if (ov != null) {
+                          ov.showOrig = now
+                          ov.invalidate()
+                      }
+                  })
+                  addRow({ "調整譯文框位置 / 大小" }, {
+                      if (!autoOn()) {
+                          toast("譯文框只在「自動」模式使用")
+                      } else {
+                          closeMenu()
+                          showSubtitle("拖曳這裡可以移動\n拖曳右下角的三角形可以調整大小", "(範例文字)")
+                      }
+                  })
+                  addRow({ "重設譯文框位置" }, {
+                      prefs.edit().remove("sub_x").remove("sub_y").remove("sub_w").remove("sub_h").apply()
+                      val sv = subtitle
+                      if (sv != null) {
+                          try {
+                              wm.removeView(sv)
+                          } catch (e: Exception) {
+                              // ignore
+                          }
+                          subtitle = null
+                      }
+                      toast("已重設,下次翻譯時會回到預設位置")
+                  })
+                  addRow({ "立即翻譯一次" }, {
+                      closeMenu()
+                      startCapture()
+                  })
+                  addRow({ "清除譯文" }, {
+                      hideOverlay()
+                  })
+                  addRow({ "停止翻譯服務" }, {
+                      closeMenu()
+                      stopSelf()
+                  })
+                  addRow({ "關閉選單" }, {
+                      closeMenu()
+                  })
+
+                  box.setOnTouchListener { _, e ->
+                      if (e.action == MotionEvent.ACTION_OUTSIDE) {
+                          closeMenu()
+                          true
+                      } else {
+                          false
+                      }
+                  }
+
+                  val mt = readMetrics()
+                  val lp = WindowManager.LayoutParams(
+                      dp(250),
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                          WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  val bl = buttonLp
+                  lp.x = if (bl != null) maxOf(0, minOf(bl.x + dp(62), mt[0] - dp(260))) else dp(60)
+                  lp.y = if (bl != null) maxOf(0, minOf(bl.y, mt[1] - dp(440))) else dp(100)
+                  wm.addView(box, lp)
+                  menuView = box
               }
 
               private fun enhance(src: Bitmap, scale: Float, contrast: Float): Bitmap {
@@ -1644,24 +2337,30 @@ jobs:
                   return v
               }
 
-              // 自動模式:譯文顯示在翻譯範圍的正下方,不蓋住原文,這樣才能持續偵測原文的變化
-              private fun placeBelow(list: List<ResultView.Item>): List<ResultView.Item> {
-                  if (list.isEmpty()) return list
-                  val reg = lastRegion ?: return list
-                  val m = dp(8)
-                  val zh = list.joinToString("\n") { x -> x.text }
-                  val jp = list.joinToString(" ") { x -> x.orig }
-                  val lh = list.maxOf { x -> x.lineH }
-                  val sw = resources.displayMetrics.widthPixels
-                  val rect = Rect(m, reg.bottom + m, sw - m, reg.bottom + m + maxOf(lh * 3, dp(90)))
-                  return listOf(ResultView.Item(rect, zh, lh, jp))
-              }
-
               private fun showResult(list: List<ResultView.Item>) {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  if (autoOn()) {
+                      // 自動模式:用可以移動、調整大小的譯文框,不蓋住原文
+                      val o = overlay
+                      if (o != null) {
+                          o.items = emptyList()
+                          o.region = null
+                          o.invalidate()
+                      }
+                      if (list.isEmpty()) {
+                          hideSubtitle()
+                      } else {
+                          showSubtitle(
+                              list.joinToString("\n") { x -> x.text },
+                              list.joinToString(" ") { x -> x.orig }
+                          )
+                      }
+                      return
+                  }
                   val v = overlay ?: createOverlay()
-                  val auto = autoOn()
-                  v.items = if (auto) placeBelow(list) else list
-                  v.region = if (auto) null else lastRegion
+                  v.showOrig = prefs.getBoolean("show_orig", true)
+                  v.items = list
+                  v.region = lastRegion
                   v.visibility = View.VISIBLE
                   v.invalidate()
               }
@@ -1669,6 +2368,14 @@ jobs:
               // ---------------------------------------------------------------- 結束
 
               override fun onDestroy() {
+                  closeMenu()
+                  try {
+                      val sv = subtitle
+                      if (sv != null) wm.removeView(sv)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  subtitle = null
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
                   latestCrop = null
