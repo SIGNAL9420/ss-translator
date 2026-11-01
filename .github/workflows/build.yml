@@ -885,13 +885,15 @@ jobs:
                   root.addView(title)
 
                   val intro = TextView(this)
-                  intro.text = "在模擬器玩日文遊戲時,點懸浮的「譯」按鈕,就會把畫面上的日文辨識後翻成繁體中文,顯示在原文位置。\n" +
-                      "辨識與翻譯都在手機本機完成。\n" +
-                      "• 自動模式:字幕跑完停住後自動翻譯,譯文顯示在翻譯範圍的下方\n" +
-                      "• 短按懸浮按鈕:立刻翻譯一次\n" +
-                      "• 長按懸浮按鈕:開啟設定選單 (切換自動/手動、離線/線上、調整譯文框…)\n" +
-                      "• 拖曳懸浮按鈕:移動位置\n" +
-                      "• 使用線上翻譯時,辨識到的日文會傳到 Google 伺服器;只想完全離線請選「只用離線」"
+                  intro.text = "玩日文或英文遊戲時,自動把畫面對白翻成台灣繁體中文。\n" +
+                      "• 先按 ①②,再按 ③,然後切到模擬器\n" +
+                      "• 翻譯範圍:長按懸浮球 → 調整翻譯範圍,拖曳黃框\n" +
+                      "• 短按懸浮球:翻一次;暫停後短按則恢復\n" +
+                      "• 長按懸浮球:設定選單 (翻譯方式、範圍、攻略本…)\n" +
+                      "• 譯文框:拖曳移動,右下角縮放,右上角 ✕ 關閉並暫停\n" +
+                      "• 智慧模式:Google 先翻,程式檢查到怪句子就換 AI,再失敗用離線\n" +
+                      "• 遊戲內建華曜攻略本,遇到角色或魔法名會提示\n" +
+                      "• 用線上或 AI 翻譯時,辨識到的文字會傳到對應服務"
                   intro.setPadding(0, dp(8), 0, dp(12))
                   root.addView(intro)
 
@@ -923,9 +925,9 @@ jobs:
                               Pair("both", "線上優先,失敗時改用離線"),
                               Pair("online", "只用線上 (Google 翻譯,直接輸出繁體)"),
                               Pair("offline", "只用離線 (不用網路,品質較差)"),
-                              Pair("smart", "智慧模式 (推薦):先用 Google 翻譯,程式自動檢查,覺得怪才改用 AI,最省錢"),
-                              Pair("ai", "AI 翻譯 (先辨識文字再交給 AI,需下方 AI 設定)"),
-                              Pair("aiv", "AI 看圖翻譯 (把對話框截圖給 AI,最準,需視覺模型)")
+                              Pair("smart", "智慧模式 (推薦):Google 先翻,檢查到怪句子立刻換 AI;AI 失敗再用離線"),
+                              Pair("ai", "每句都用 AI 翻 (先辨識文字再交給 AI)"),
+                              Pair("aiv", "每句都用 AI 看圖翻 (截圖給 AI,最準也最耗額度)")
                           ),
                           cfg
                       )
@@ -933,25 +935,6 @@ jobs:
 
                   root.addView(makeAiSettings(cfg))
 
-                  val gTitle = TextView(this)
-                  gTitle.text = "自訂專有名詞 (每行一條,格式:日文=中文)。要修正翻錯的詞,用「>錯的譯法=正確譯法」。這裡的設定優先於內建名詞表。"
-                  gTitle.setPadding(0, dp(12), 0, 0)
-                  root.addView(gTitle)
-                  val gEdit = EditText(this)
-                  gEdit.hint = "例:\nリナ=莉娜\n>麗娜=莉娜"
-                  gEdit.minLines = 4
-                  gEdit.gravity = Gravity.TOP
-                  gEdit.setText(cfg.getString("glossary_user", ""))
-                  gEdit.addTextChangedListener(object : TextWatcher {
-                      override fun afterTextChanged(s: Editable?) {
-                          cfg.edit().putString("glossary_user", s?.toString() ?: "").apply()
-                      }
-
-                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                  })
-                  root.addView(gEdit)
 
                   root.addView(makeButton("📖 開啟攻略本 (華曜版)") {
                       startActivity(Intent(this, GuideActivity::class.java))
@@ -1551,6 +1534,7 @@ jobs:
               var onMove: ((Int, Int) -> Unit)? = null
               var onResize: ((Int, Int) -> Unit)? = null
               var onFinish: (() -> Unit)? = null
+              var onClose: (() -> Unit)? = null
 
               private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                   color = 0xE6101820.toInt()
@@ -1563,6 +1547,12 @@ jobs:
               }
               private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                   color = 0xCCFFFFFF.toInt()
+              }
+
+              private val closeBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC555555.toInt() }
+              private val closeX = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                  color = 0xFFFFFFFF.toInt()
+                  strokeWidth = 4f
               }
 
               private var mode = 0
@@ -1612,6 +1602,15 @@ jobs:
                   layout.draw(canvas)
                   canvas.restore()
 
+                  // 右上角的關閉按鈕
+                  val cr = dp(13f)
+                  val cx = w - dp(18f)
+                  val cy = dp(18f)
+                  canvas.drawCircle(cx, cy, cr, closeBg)
+                  val d = cr * 0.45f
+                  canvas.drawLine(cx - d, cy - d, cx + d, cy + d, closeX)
+                  canvas.drawLine(cx - d, cy + d, cx + d, cy - d, closeX)
+
                   // 右下角的調整大小把手
                   val hs = dp(22f)
                   val path = Path()
@@ -1626,7 +1625,13 @@ jobs:
                   when (e.action) {
                       MotionEvent.ACTION_DOWN -> {
                           val hs = dp(44f)
-                          mode = if (e.x > width - hs && e.y > height - hs) 2 else 1
+                          mode = if (e.x > width - hs && e.y > height - hs) {
+                              2
+                          } else if (e.x > width - hs && e.y < hs) {
+                              3
+                          } else {
+                              1
+                          }
                           lastX = e.rawX
                           lastY = e.rawY
                           return true
@@ -1644,7 +1649,13 @@ jobs:
                           return true
                       }
                       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                          val wasClose = mode == 3 && e.action == MotionEvent.ACTION_UP &&
+                              e.x > width - dp(44f) && e.y < dp(44f)
                           mode = 0
+                          if (wasClose) {
+                              onClose?.invoke()
+                              return true
+                          }
                           onFinish?.invoke()
                           return true
                       }
@@ -2063,7 +2074,11 @@ jobs:
                           MotionEvent.ACTION_UP -> {
                               ui.removeCallbacks(longRun)
                               if (!dragging && !longFired) {
-                                  startCapture()
+                                  if (paused) {
+                                      resumeAuto()
+                                  } else {
+                                      startCapture()
+                                  }
                               }
                           }
                           MotionEvent.ACTION_CANCEL -> {
@@ -2290,7 +2305,7 @@ jobs:
                           ui.post { toast("AI 看圖失敗,改用文字辨識:" + (e.message ?: e.toString())) }
                       }
                   }
-                  if (engine != "online" && engine != "ai" && engine != "aiv") {
+                  if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst") {
                       try {
                           Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()), 90, TimeUnit.SECONDS)
                       } catch (e: Exception) {
@@ -2357,7 +2372,28 @@ jobs:
               private fun autoOn(): Boolean =
                   (getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("mode", "auto") ?: "auto") == "auto"
 
-              private fun baseLabel(): String = if (autoOn()) "自" else "譯"
+              private var paused = false
+
+              private fun pauseAuto() {
+                  paused = true
+                  ui.removeCallbacks(stableRun)
+                  latestCrop?.recycle()
+                  latestCrop = null
+                  hideSubtitle()
+                  hideGuideHint()
+                  setLabel(baseLabel())
+                  toast("已暫停自動翻譯。短按懸浮球可以恢復")
+              }
+
+              private fun resumeAuto() {
+                  paused = false
+                  curSig = null
+                  doneJp = ""
+                  setLabel(baseLabel())
+                  toast("已恢復自動翻譯")
+              }
+
+              private fun baseLabel(): String = if (paused && autoOn()) "停" else if (autoOn()) "自" else "譯"
 
               // 翻譯範圍 (以螢幕高度的百分比設定),回傳 [上緣, 下緣] 的像素位置
               private fun regionRows(h: Int): IntArray {
@@ -2416,7 +2452,7 @@ jobs:
               }
 
               private fun onAutoFrame(crop: Bitmap, top: Int) {
-                  if (button == null || !autoOn()) {
+                  if (button == null || !autoOn() || paused) {
                       crop.recycle()
                       return
                   }
@@ -2493,14 +2529,39 @@ jobs:
                   return out
               }
 
-              // 自動判斷機翻結果可不可疑:回傳原因,正常回傳 null
+              // 自動判斷機翻結果有沒有問題:累積分數,2 分以上就換 AI。回傳原因,正常回傳 null
               private fun suspicious(tr: Translator, jp: String, zh: String): String? {
                   val jl = cjkCount(jp)
                   if (jl == 0) return null
-                  if (Regex("[A-Za-z]{3,}").containsMatchIn(zh)) return "夾雜英文"
+                  var score = 0
+                  val why = StringBuilder()
+                  if (Regex("[A-Za-z]{3,}").containsMatchIn(zh)) {
+                      score += 2
+                      why.append("夾雜英文 ")
+                  }
                   val zl = zh.count { c -> c in '\u4E00'..'\u9FFF' }
-                  if (jl >= 6 && (zl < jl * 0.35 || zl > jl * 1.8)) return "長度不合"
-                  if (jl >= 10) {
+                  if (jl >= 6 && (zl < jl * 0.35 || zl > jl * 1.8)) {
+                      score += 2
+                      why.append("長度不合 ")
+                  }
+                  // 日文裡沒有「我」,譯文卻冒出「我」(機翻常把主詞弄錯)
+                  if (zh.contains("我") && !Regex("私|わたし|ワタシ|あたし|僕|ぼく|俺|おれ|われ|我").containsMatchIn(jp)) {
+                      score += 1
+                      why.append("主詞可疑 ")
+                  }
+                  // 譯文出現「小時候/以前」之類,日文卻沒有相關的字
+                  if (Regex("小時候|從前|曾經|以前").containsMatchIn(zh) &&
+                      !Regex("昔|子供|子ども|頃|前|かつて|むかし|ちいさ|小さ").containsMatchIn(jp)
+                  ) {
+                      score += 1
+                      why.append("時間詞可疑 ")
+                  }
+                  // 口語語尾、機翻容易弄錯的說法
+                  if (Regex("ひょっと|んじゃない|かしら|わね|だわ|じゃん|だよね|ちゃう|ってば|なんて|とか").containsMatchIn(jp)) {
+                      score += 1
+                      why.append("口語 ")
+                  }
+                  if (jl >= 6) {
                       try {
                           val off = translateText(tr, jp, "offline")
                           val a = bigrams(zh)
@@ -2508,13 +2569,16 @@ jobs:
                           if (a.isNotEmpty() && b.isNotEmpty()) {
                               val inter = a.count { x -> b.contains(x) }
                               val union = a.size + b.size - inter
-                              if (union > 0 && inter.toFloat() / union < 0.12f) return "兩種翻譯差太多"
+                              if (union > 0 && inter.toFloat() / union < 0.2f) {
+                                  score += 1
+                                  why.append("與離線差很多 ")
+                              }
                           }
                       } catch (e: Exception) {
                           // 離線模型不能用就不比對
                       }
                   }
-                  return null
+                  return if (score >= 2) why.toString().trim() else null
               }
 
               private val aiHistory = java.util.ArrayDeque<String>()
@@ -2544,6 +2608,20 @@ jobs:
                           ui.post { toast("AI 失敗,先用一般翻譯:" + (e.message ?: e.toString())) }
                           return z1
                       }
+                  }
+                  if (engine == "aifirst") {
+                      val cfg0 = AiClient.config(applicationContext)
+                      if (cfg0 != null && cfg0.key.isNotEmpty()) {
+                          try {
+                              val z = AiClient.translateText(applicationContext, jp0, aiHistory.toList())
+                              val fixed = Glossary.fix(applicationContext, z)
+                              rememberAi(fixed)
+                              return fixed
+                          } catch (e: Exception) {
+                              ui.post { toast("AI 失敗,改用 Google 翻譯:" + (e.message ?: e.toString()).take(60)) }
+                          }
+                      }
+                      return translateText(tr, jp0, "both")
                   }
                   if (engine == "ai" || engine == "aiv") {
                       try {
@@ -2748,6 +2826,7 @@ jobs:
                       lp.height = maxOf(dp(60), lp.height + dh)
                       wm.updateViewLayout(v, lp)
                   }
+                  v.onClose = { pauseAuto() }
                   v.onFinish = {
                       prefs.edit()
                           .putInt("sub_x", lp.x)
@@ -2883,7 +2962,8 @@ jobs:
                   fun engineName(): String = when (prefs.getString("engine", "both")) {
                       "online" -> "只用線上"
                       "offline" -> "只用離線"
-                      "smart" -> "智慧 (可疑才用 AI)"
+                      "smart" -> "智慧 (Google 先翻,怪才換 AI)"
+                      "aifirst" -> "AI 優先 (AI > Google > 離線)"
                       "ai" -> "AI (辨識文字後翻)"
                       "aiv" -> "AI 看圖 (最準)"
                       else -> "線上優先,失敗改離線"
@@ -2908,6 +2988,10 @@ jobs:
                   addRow({ "調整翻譯範圍 (拖曳黃框)" }, {
                       closeMenu()
                       showRegionEditor()
+                  })
+                  addRow({ if (paused) "恢復自動翻譯" else "暫停自動翻譯" }, {
+                      if (paused) resumeAuto() else pauseAuto()
+                      closeMenu()
                   })
                   addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
