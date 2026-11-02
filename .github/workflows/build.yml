@@ -4171,11 +4171,22 @@ jobs:
         run: |
           G=app/src/main/assets/guide
           mkdir -p "$G"
-          Z=""
-          [ -f guide.zip ] && Z=guide.zip
-          [ -f .github/workflows/guide.zip ] && Z=.github/workflows/guide.zip
+          Z=$(find . -iname 'guide*.zip' -not -path './app/*' -not -path './.git/*' | head -1)
+          echo "guide zip found: [$Z]"
           if [ -n "$Z" ]; then
             unzip -o -j "$Z" -d "$G"
+            # 檔名如果不是 p001.jpg 這種格式,就依排序重新編號
+            if ! ls "$G" | grep -qE '^p[0-9]{3}\.jpg$'; then
+              i=0
+              for f in $(ls "$G"/*.jpg "$G"/*.JPG "$G"/*.jpeg 2>/dev/null | sort); do
+                i=$((i+1))
+                mv "$f" "$G/tmp_$i.jpg"
+              done
+              for f in $(ls "$G"/tmp_*.jpg | sort -t_ -k2 -n); do
+                n=$(basename "$f" .jpg | cut -d_ -f2)
+                mv "$f" "$(printf "$G/p%03d.jpg" "$n")"
+              done
+            fi
           else
             echo "guide.zip not found, downloading from archive.org"
             sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils imagemagick
@@ -4191,7 +4202,12 @@ jobs:
               convert "$f" -resize 640x -quality 55 "$out"
             done
           fi
-          ls "$G" | wc -l
+          COUNT=$(ls "$G" | wc -l)
+          echo "guide images: $COUNT"
+          echo "## 攻略圖片數量: $COUNT 張 (來源: ${Z:-archive.org})" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$COUNT" -lt 50 ]; then
+            echo "⚠️ 攻略圖片不足,App 內的攻略本會是空的。請確認專案最外層有 guide.zip。" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Download OpenCC dictionaries (簡轉繁字典)
         run: |
