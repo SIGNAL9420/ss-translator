@@ -302,6 +302,212 @@ jobs:
           >立刻=馬上
           >正在=正
           >此外=而且
+
+          # 遊戲內地名 (華曜攻略本譯名,章節提示用)
+          ソニア・シティ=索尼亞城
+          ソニアシティ=索尼亞城
+          イゼルセン=伊哲魯斯
+          フリーグラント=自由之地
+          キューザック=裘撒克
+          マークウェルズ=馬克威魯斯
+          グラムストック=固蘭斯特
+          レザリアム=列薩連姆
+          サンブルク=撒布魯克
+          ラルティーグ=拉魯帝克
+          レイクウッド=湖水樹林
+          レークウッド=湖水樹林
+          バークランド=巴克藍德
+          パークランド=巴克藍德
+
+          # 遊戲內敵人 (華曜攻略本譯名)
+          ゴースト=鬼魂
+          ゾンビ=僵屍
+          トロル=多羅魯
+          ゴーレム=石人
+          リビングメイル=守衛者
+          アサシン=刺客
+          シャドウ=影子
+          ヒエロ=小丑
+          ピエロ=小丑
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
+          # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
+          C|1|危機一髮|29|32
+          C|2|一擲千金|33|42
+          C|3|全體集合|43|50
+          C|4|順風滿帆|51|56
+          C|5|豬突猛進|57|66
+          C|6|惡人討伐|67|74
+          C|7|魔王召喚|75|82
+          C|8|最終決戰|83|87
+          K|レイクウッド|1|29|湖水樹林
+          K|レークウッド|1|29|湖水樹林
+          K|湖水樹林|1|29|湖水樹林
+          K|グラムストック|1|30|固蘭斯特
+          K|グラムトック|1|30|固蘭斯特
+          K|固蘭斯特|1|30|固蘭斯特
+          K|グラムストック|2|33|固蘭斯特
+          K|グラムトック|2|33|固蘭斯特
+          K|固蘭斯特|2|33|固蘭斯特
+          K|グラムストック|7|82|固蘭斯特
+          K|グラムトック|7|82|固蘭斯特
+          K|固蘭斯特|7|82|固蘭斯特
+          K|バークランド|1|29|巴克藍德
+          K|パークランド|1|29|巴克藍德
+          K|バークラウド|1|29|巴克藍德
+          K|巴克藍德|1|29|巴克藍德
+          K|バークランド|2|33|巴克藍德
+          K|パークランド|2|33|巴克藍德
+          K|バークラウド|2|33|巴克藍德
+          K|巴克藍德|2|33|巴克藍德
+          K|バークランド|3|43|巴克藍德
+          K|パークランド|3|43|巴克藍德
+          K|バークラウド|3|43|巴克藍德
+          K|巴克藍德|3|43|巴克藍德
+          K|バークランド|4|51|巴克藍德
+          K|パークランド|4|51|巴克藍德
+          K|バークラウド|4|51|巴克藍德
+          K|巴克藍德|4|51|巴克藍德
+          K|バークランド|5|65|巴克藍德
+          K|パークランド|5|65|巴克藍德
+          K|バークラウド|5|65|巴克藍德
+          K|巴克藍德|5|65|巴克藍德
+          K|ソニア|2|33|索尼亞城
+          K|索尼亞|2|33|索尼亞城
+          K|ソニア|3|43|索尼亞城
+          K|索尼亞|3|43|索尼亞城
+          K|マークウェルズ|1|30|馬克威魯斯
+          K|マークウェル|1|30|馬克威魯斯
+          K|馬克威魯|1|30|馬克威魯斯
+          K|マークウェルズ|4|51|馬克威魯斯
+          K|マークウェル|4|51|馬克威魯斯
+          K|馬克威魯|4|51|馬克威魯斯
+          K|イゼルセン|4|51|伊哲魯斯
+          K|伊哲魯斯|4|51|伊哲魯斯
+          K|イゼルセン|5|57|伊哲魯斯
+          K|伊哲魯斯|5|57|伊哲魯斯
+          K|イゼルセン|7|79|伊哲魯斯
+          K|伊哲魯斯|7|79|伊哲魯斯
+          K|セイルーン|3|50|塞隆
+          K|塞隆|3|50|塞隆
+          K|セイルーン|4|51|塞隆
+          K|塞隆|4|51|塞隆
+          K|セイルーン|5|57|塞隆
+          K|塞隆|5|57|塞隆
+          K|セイルーン|6|74|塞隆
+          K|塞隆|6|74|塞隆
+          K|セイルーン|7|75|塞隆
+          K|塞隆|7|75|塞隆
+          K|レザリアム|4|51|列薩連姆
+          K|列薩連姆|4|51|列薩連姆
+          K|列薩達姆|4|51|列薩連姆
+          K|レザリアム|7|75|列薩連姆
+          K|列薩連姆|7|75|列薩連姆
+          K|列薩達姆|7|75|列薩連姆
+          K|レザリアム|8|83|列薩連姆
+          K|列薩連姆|8|83|列薩連姆
+          K|列薩達姆|8|83|列薩連姆
+          K|フリーグラント|5|57|自由之地
+          K|自由之地|5|57|自由之地
+          K|フリーグラント|7|78|自由之地
+          K|自由之地|7|78|自由之地
+          K|キューザック|5|57|裘撒克
+          K|裘撒克|5|57|裘撒克
+          K|キューザック|6|67|裘撒克
+          K|裘撒克|6|67|裘撒克
+          K|サンブルク|7|75|撒布魯克
+          K|撒布魯克|7|75|撒布魯克
+          K|ラルティーグ|7|75|拉魯帝克
+          K|拉魯帝克|7|75|拉魯帝克
+          K|ラーク|1|32|拉克
+          K|拉克|1|32|拉克
+          K|ラーク|3|46|拉克
+          K|拉克|3|46|拉克
+          K|ラーク|4|52|拉克
+          K|拉克|4|52|拉克
+          K|ラーク|7|77|拉克
+          K|拉克|7|77|拉克
+          K|ラーク|8|84|拉克
+          K|拉克|8|84|拉克
+          K|ゼルガディス|2|41|傑路剛帝士
+          K|傑路剛帝士|2|41|傑路剛帝士
+          K|傑爾加帝斯|2|41|傑路剛帝士
+          K|ゼルガディス|3|44|傑路剛帝士
+          K|傑路剛帝士|3|44|傑路剛帝士
+          K|傑爾加帝斯|3|44|傑路剛帝士
+          K|アメリア|3|49|阿梅莉雅
+          K|阿梅莉雅|3|49|阿梅莉雅
+          K|亞美莉亞|3|49|阿梅莉雅
+          K|アメリア|5|59|阿梅莉雅
+          K|阿梅莉雅|5|59|阿梅莉雅
+          K|亞美莉亞|5|59|阿梅莉雅
+          K|エミリア|2|40|愛咪莉亞
+          K|愛咪莉亞|2|40|愛咪莉亞
+          K|愛咪麗亞|2|40|愛咪莉亞
+          K|エミリア|3|49|愛咪莉亞
+          K|愛咪莉亞|3|49|愛咪莉亞
+          K|愛咪麗亞|3|49|愛咪莉亞
+          K|メアリ|3|47|美亞莉
+          K|美亞莉|3|47|美亞莉
+          K|ゾット|2|35|左特
+          K|左特|2|35|左特
+          K|ゾット|4|56|左特
+          K|左特|4|56|左特
+          K|ガレフ|5|57|加列夫
+          K|加列夫|5|57|加列夫
+          K|加列富|5|57|加列夫
+          K|ガレフ|6|67|加列夫
+          K|加列夫|6|67|加列夫
+          K|加列富|6|67|加列夫
+          K|フォシグ|8|83|霍克
+          K|フォッグ|8|83|霍克
+          K|霍克|8|83|霍克
+          K|ディオン|8|84|迪翁
+          K|迪翁|8|84|迪翁
+          K|モスマン|1|32|魔斯人
+          K|魔斯人|1|32|魔斯人
+          K|モスマン|2|34|魔斯人
+          K|魔斯人|2|34|魔斯人
+          K|トロル|2|36|多羅魯
+          K|多羅魯|2|36|多羅魯
+          K|ヒエロ|4|52|小丑
+          K|ピエロ|4|52|小丑
+          K|小丑|4|52|小丑
+          K|ヒエロ|6|71|小丑
+          K|ピエロ|6|71|小丑
+          K|小丑|6|71|小丑
+          K|ゾンビ|3|45|僵屍
+          K|僵屍|3|45|僵屍
+          K|ゴースト|3|45|鬼魂
+          K|鬼魂|3|45|鬼魂
+          K|ゴースト|4|53|鬼魂
+          K|鬼魂|4|53|鬼魂
+          K|ゴースト|7|79|鬼魂
+          K|鬼魂|7|79|鬼魂
+          K|シャドウ|3|46|影子
+          K|影子|3|46|影子
+          K|陰影|3|46|影子
+          K|シャドウ|4|54|影子
+          K|影子|4|54|影子
+          K|陰影|4|54|影子
+          K|アサシン|2|35|刺客
+          K|刺客|2|35|刺客
+          K|リビングメイル|6|71|守衛者
+          K|守衛者|6|71|守衛者
+          K|リビングメイル|7|76|守衛者
+          K|守衛者|7|76|守衛者
+          K|ゴーレム|7|79|石人
+          K|石人|7|79|石人
+          K|ビースト|7|76|野獸
+          K|D・野獸|7|76|野獸
+          K|ビースト|8|84|野獸
+          K|D・野獸|8|84|野獸
+          K|はんぎょじん|7|80|半魚人
+          K|半魚人|7|80|半魚人
+          K|半人魚|5|59|半人魚
+          K|シルフィール|7|76|希爾菲
+          K|希爾菲兒|7|76|希爾菲
+          K|希爾菲|7|76|希爾菲
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_index.txt' <<'__SSFILE_EOF__'
           # 攻略索引: 關鍵字=頁碼|顯示名稱   (關鍵字可以是日文或中文,頁碼是攻略本圖片編號)
@@ -628,6 +834,129 @@ jobs:
               }
           }
           __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/ChapterGuide.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+
+          /**
+           * 章節判斷:看對話裡出現的地名、人物、敵人,猜目前玩到攻略本的第幾章。
+           * 規則:章節只往前不往回;需要證據累積夠才換章;猜錯時可以在選單手動指定。
+           */
+          object ChapterGuide {
+
+              class Ch(val n: Int, val title: String, val start: Int, val end: Int)
+
+              class Kw(val key: String, val ch: Int, val page: Int, val label: String)
+
+              class Hint(val chapter: Int, val title: String, val page: Int, val text: String)
+
+              private var chapters: List<Ch>? = null
+              private var kws: List<Kw>? = null
+              private val score = FloatArray(10)
+              private var lastPlaceKey = ""
+              private var lastPlaceAt = 0L
+
+              private fun load(ctx: Context) {
+                  if (chapters != null) return
+                  val cs = ArrayList<Ch>()
+                  val ks = ArrayList<Kw>()
+                  try {
+                      ctx.assets.open("guide_chapters.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                          for (l in lines) {
+                              if (l.startsWith("#")) continue
+                              val p = l.split("|")
+                              if (p[0] == "C" && p.size >= 5) {
+                                  cs.add(Ch(p[1].toInt(), p[2], p[3].toInt(), p[4].toInt()))
+                              } else if (p[0] == "K" && p.size >= 5) {
+                                  ks.add(Kw(p[1], p[2].toInt(), p[3].toInt(), p[4]))
+                              }
+                          }
+                      }
+                  } catch (e: Exception) {
+                      // 沒有資料就不提示
+                  }
+                  chapters = cs
+                  kws = ks
+              }
+
+              fun chapterInfo(ctx: Context, n: Int): Ch? {
+                  load(ctx)
+                  return chapters?.firstOrNull { c -> c.n == n }
+              }
+
+              fun current(ctx: Context): Int =
+                  ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("chapter", 0)
+
+              fun set(ctx: Context, n: Int) {
+                  ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).edit().putInt("chapter", n).apply()
+                  for (i in score.indices) score[i] = 0f
+                  lastPlaceKey = ""
+              }
+
+              /** 看這一句對話 (日文 + 譯文),回傳要顯示的章節提示;沒有就回傳 null */
+              fun update(ctx: Context, text: String): Hint? {
+                  load(ctx)
+                  val all = kws ?: return null
+                  val cs = chapters ?: return null
+                  if (all.isEmpty()) return null
+
+                  // 找出這段文字裡有哪些關鍵字
+                  val hitKeys = LinkedHashSet<String>()
+                  for (k in all) {
+                      if (text.contains(k.key)) hitKeys.add(k.key)
+                  }
+                  if (hitKeys.isEmpty()) return null
+
+                  for (i in score.indices) score[i] = score[i] * 0.85f
+                  val seenLabel = HashSet<String>()
+                  for (key in hitKeys) {
+                      val label = all.first { k -> k.key == key }.label
+                      if (!seenLabel.add(label)) continue // 同一個名字的日文/中文寫法只算一次
+                      val chs = all.filter { k -> k.key == key }.map { k -> k.ch }.toSet()
+                      val w = 3f / chs.size
+                      for (c in chs) score[c] += w
+                  }
+
+                  val cur = current(ctx)
+                  // 找分數最高、而且比現在章節新的候選;已經在某章時一次最多往後一章 (證據很強才可以跳兩章)
+                  var best = 0
+                  var bestScore = 0f
+                  for (c in 1..8) {
+                      if (c <= cur) continue
+                      if (cur > 0 && c > cur + 1 && score[c] < 6f) continue
+                      if (score[c] > bestScore) {
+                          bestScore = score[c]
+                          best = c
+                      }
+                  }
+                  if (best > 0 && bestScore >= 4.5f) {
+                      val info = cs.firstOrNull { c -> c.n == best }
+                      set(ctx, best)
+                      if (info != null) {
+                          return Hint(
+                              best, info.title, info.start,
+                              "現在大概在第" + best + "章「" + info.title + "」→ 看第" + info.start + "頁"
+                          )
+                      }
+                  }
+
+                  // 目前章節裡有出現的地點/人物:提示對應頁
+                  if (cur > 0) {
+                      val now = System.currentTimeMillis()
+                      for (key in hitKeys) {
+                          val k = all.firstOrNull { x -> x.key == key && x.ch == cur } ?: continue
+                          if (k.label == lastPlaceKey && now - lastPlaceAt < 60000L) continue
+                          lastPlaceKey = k.label
+                          lastPlaceAt = now
+                          val info = cs.firstOrNull { c -> c.n == cur }
+                          return Hint(cur, info?.title ?: "", k.page, "第" + cur + "章:" + k.label + " → 看第" + k.page + "頁")
+                      }
+                  }
+                  return null
+              }
+          }
+          __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/Glossary.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
 
@@ -816,6 +1145,7 @@ jobs:
               private lateinit var web: WebView
               private lateinit var info: TextView
               private var page = 1
+              private lateinit var chapBtn: Button
               private var total = 0
 
               private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -871,6 +1201,11 @@ jobs:
                   bar.addView(next, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                   bar.addView(toc, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                   root.addView(bar)
+                  chapBtn = Button(this)
+                  chapBtn.isAllCaps = false
+                  chapBtn.setOnClickListener { showChapterPicker() }
+                  root.addView(chapBtn, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                  updateChapBtn()
                   setContentView(root)
                   go(page)
               }
@@ -885,6 +1220,31 @@ jobs:
                       "<div style='color:#999;font-size:12px;padding:6px'>出處:華曜出版《秀逗魔導士 完全攻略本》," +
                       "掃描檔來自 archive.org/details/rp-001 (公開資料)</div></body></html>"
                   web.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
+              }
+
+              private fun updateChapBtn() {
+                  val c = ChapterGuide.current(this)
+                  val info = ChapterGuide.chapterInfo(this, c)
+                  chapBtn.text = if (c == 0 || info == null) "我玩到第幾章:還沒設定 (點這裡選擇)"
+                  else "我玩到第 " + c + " 章「" + info.title + "」(點這裡更改)"
+              }
+
+              private fun showChapterPicker() {
+                  val labels = ArrayList<String>()
+                  labels.add("還不知道 (讓程式從對話猜)")
+                  for (n in 1..8) {
+                      val info = ChapterGuide.chapterInfo(this, n)
+                      labels.add("第 " + n + " 章 " + (info?.title ?: "") + (if (info != null) "  (第 " + info.start + " 頁)" else ""))
+                  }
+                  AlertDialog.Builder(this)
+                      .setTitle("你現在玩到第幾章?")
+                      .setItems(labels.toTypedArray()) { _, i ->
+                          ChapterGuide.set(this, i)
+                          updateChapBtn()
+                          val info = ChapterGuide.chapterInfo(this, i)
+                          if (info != null) go(info.start)
+                      }
+                      .show()
               }
 
               private fun showToc() {
@@ -973,7 +1333,7 @@ jobs:
                       "• 長按懸浮球:設定選單 (翻譯方式、範圍、攻略本…)\n" +
                       "• 譯文框:拖曳移動,右下角縮放,右上角 ✕ 關閉並暫停\n" +
                       "• 智慧模式:Google 先翻,程式檢查到怪句子就換 AI,再失敗用離線\n" +
-                      "• 遊戲內建華曜攻略本,遇到角色或魔法名會提示\n" +
+                      "• 遊戲內建華曜攻略本,遇到角色、魔法名會提示,並會猜你玩到第幾章、提示該看哪一頁\n" +
                       "• 用線上或 AI 翻譯時,辨識到的文字會傳到對應服務"
                   intro.setPadding(0, dp(8), 0, dp(12))
                   root.addView(intro)
@@ -1027,6 +1387,7 @@ jobs:
                   )
 
                   root.addView(makeAiSettings(cfg))
+                  root.addView(makeChapterPicker())
                   root.addView(makeButton("📖 開啟攻略本 (華曜版)") {
                       startActivity(Intent(this, GuideActivity::class.java))
                   })
@@ -1300,6 +1661,35 @@ jobs:
                       rg.addView(rb)
                   }
                   box.addView(rg)
+                  return box
+              }
+
+              private fun makeChapterPicker(): LinearLayout {
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  val tv = TextView(this)
+                  tv.text = "我玩到第幾章 (設定後,遊戲裡會依這一章提示該看攻略的哪一頁;玩到下一章時程式也會自己判斷)"
+                  tv.setPadding(0, dp(12), 0, 0)
+                  box.addView(tv)
+                  val labels = ArrayList<String>()
+                  labels.add("還不知道 (讓程式從對話猜)")
+                  for (n in 1..8) {
+                      val info = ChapterGuide.chapterInfo(this, n)
+                      labels.add("第 " + n + " 章 " + (info?.title ?: ""))
+                  }
+                  val sp = Spinner(this)
+                  sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
+                  sp.setSelection(ChapterGuide.current(this).coerceIn(0, 8))
+                  sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                          if (position != ChapterGuide.current(this@MainActivity)) {
+                              ChapterGuide.set(this@MainActivity, position)
+                          }
+                      }
+
+                      override fun onNothingSelected(parent: AdapterView<*>?) {}
+                  }
+                  box.addView(sp)
                   return box
               }
 
@@ -3285,6 +3675,24 @@ jobs:
                   addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
                   })
+                  addRow({
+                      val c = ChapterGuide.current(applicationContext)
+                      val info = ChapterGuide.chapterInfo(applicationContext, c)
+                      if (c == 0 || info == null) "目前章節:還不知道 (點一下手動指定)"
+                      else "目前章節:第" + c + "章「" + info.title + "」(點一下換下一章)"
+                  }, {
+                      val c = ChapterGuide.current(applicationContext)
+                      ChapterGuide.set(applicationContext, if (c >= 8) 0 else c + 1)
+                  })
+                  addRow({ "開啟本章攻略" }, {
+                      closeMenu()
+                      val c = ChapterGuide.current(applicationContext)
+                      val info = ChapterGuide.chapterInfo(applicationContext, c)
+                      val gi = Intent(this, GuideActivity::class.java)
+                      gi.putExtra("page", info?.start ?: 27)
+                      gi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      startActivity(gi)
+                  })
                   addRow({ "開啟攻略本" }, {
                       closeMenu()
                       val gi = Intent(this, GuideActivity::class.java)
@@ -3536,7 +3944,7 @@ jobs:
 
               // ---------------------------------------------------------------- 攻略提示
 
-              private var guideChip: TextView? = null
+              private var guideChip: View? = null
               private var guideIndex: List<Triple<String, Int, String>>? = null
 
               private fun loadGuideIndex(): List<Triple<String, Int, String>> {
@@ -3578,6 +3986,8 @@ jobs:
 
               private fun showGuideHint(text: String) {
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  // 章節判斷一直在背景進行 (就算提示關掉,也會記住玩到哪)
+                  val chap = ChapterGuide.update(applicationContext, text)
                   if (!prefs.getBoolean("guide_hint", true)) return
                   val hits = ArrayList<Triple<String, Int, String>>()
                   for (e in loadGuideIndex()) {
@@ -3586,25 +3996,38 @@ jobs:
                           if (hits.size >= 2) break
                       }
                   }
-                  if (hits.isEmpty()) {
+                  if (hits.isEmpty() && chap == null) {
                       hideGuideHint()
                       return
                   }
                   hideGuideHint()
-                  val tv = TextView(this)
-                  tv.text = "📖 攻略:" + hits.joinToString("、") { x -> x.third }
-                  tv.setTextColor(0xFFFFFFFF.toInt())
-                  tv.textSize = 14f
-                  tv.setPadding(dp(12), dp(8), dp(12), dp(8))
-                  tv.setBackgroundColor(0xE61565C0.toInt())
-                  val page = hits[0].second
-                  tv.setOnClickListener {
-                      val i = Intent(this, GuideActivity::class.java)
-                      i.putExtra("page", page)
-                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                      startActivity(i)
-                      hideGuideHint()
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  fun addLine(label: String, page: Int) {
+                      val tv = TextView(this)
+                      tv.text = label
+                      tv.setTextColor(0xFFFFFFFF.toInt())
+                      tv.textSize = 14f
+                      tv.setPadding(dp(12), dp(8), dp(12), dp(8))
+                      tv.setBackgroundColor(0xE61565C0.toInt())
+                      tv.setOnClickListener {
+                          val i = Intent(this, GuideActivity::class.java)
+                          i.putExtra("page", page)
+                          i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                          startActivity(i)
+                          hideGuideHint()
+                      }
+                      val lpp = LinearLayout.LayoutParams(
+                          LinearLayout.LayoutParams.WRAP_CONTENT,
+                          LinearLayout.LayoutParams.WRAP_CONTENT
+                      )
+                      lpp.topMargin = dp(4)
+                      lpp.gravity = Gravity.END
+                      box.addView(tv, lpp)
                   }
+                  if (chap != null) addLine("📖 " + chap.text, chap.page)
+                  if (hits.isNotEmpty()) addLine("📖 攻略:" + hits.joinToString("、") { x -> x.third }, hits[0].second)
+                  val tv = box
                   val lp = WindowManager.LayoutParams(
                       WindowManager.LayoutParams.WRAP_CONTENT,
                       WindowManager.LayoutParams.WRAP_CONTENT,
