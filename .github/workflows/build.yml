@@ -212,25 +212,25 @@ jobs:
           ギガ・スレイブ=重破斬
           ラグナブレード=神滅斬
           アストラルヴァイン=魔皇靈斬
-          ラ・ティルト=拉提爾特
-          ラティルト=拉提爾特
-          エルメキアランス=艾爾梅加槍
-          ブラムブレイザー=布拉姆布雷薩
-          ホーリィブレス=神聖火焰
-          ホーリーブレス=神聖火焰
-          リカバリィ=恢復
+          ラ・ティルト=崩靈裂
+          ラティルト=崩靈裂
+          エルメキアランス=烈閃槍
+          ブラムブレイザー=青魔烈彈波
+          ホーリィブレス=凈化結界
+          ホーリーブレス=凈化結界
+          リカバリィ=治癒術
           リザレクション=復活
-          スリーピング=睡眠
-          フレアアロー=核融箭
-          フレアランス=核融槍
-          ファイアーボール=火球
-          ブラストボム=爆烈火藥
-          バーストフレア=爆裂核融術
-          フリーズアロー=冷凍箭
-          アイシクルランス=冰凍之槍
-          ディルブランド=迪爾布藍德
+          スリーピング=睡眠術
+          フレアアロー=炎之矢
+          フレアランス=炎之槍
+          ファイアーボール=火炎球
+          ブラストボム=暴爆咒
+          バーストフレア=烈火球
+          フリーズアロー=冰之矢
+          アイシクルランス=冰之槍
+          ディルブランド=炸彈陣
           ダグハウト=達格豪特
-          ディムウィン=迪姆之風
+          ディムウィン=魔風
           ブラムガッシュ=布拉姆加
           ブラムファング=布拉姆之牙
 
@@ -329,6 +329,46 @@ jobs:
           シャドウ=影子
           ヒエロ=小丑
           ピエロ=小丑
+
+          # OCR 常見誤判 / 短句前處理
+          <長存み=人並み
+          <^なによ[…・.]*$=何よ
+          <^ちっ[、,]生きてたか=ちっ、生きてたか
+
+
+          # 魔法名稱 (台灣動畫譯名,攻略本名稱另見魔法說明)
+          エルメキア・ランス=烈閃槍
+          ブラム・ブレイザー=青魔烈彈波
+          ホーリー・ブレス=凈化結界
+          フレア・アロー=炎之矢
+          フレア・ランス=炎之槍
+          ファイアー・ボール=火炎球
+          ブラスト・ボム=暴爆咒
+          バースト・フレア=烈火球
+          フリーズ・アロー=冰之矢
+          アイシクル・ランス=冰之槍
+          ディム・ウィン=魔風
+          バーストロンド=爆煙舞
+          バースト・ロンド=爆煙舞
+          ゼラスブリッド=獸王牙操彈
+          ゼラス・ブリッド=獸王牙操彈
+          ダイナストブレス=霸王冰河烈
+          ダイナスト・ブレス=霸王冰河烈
+          ダイナストブラス=霸王雷擊陣
+          ダイナスト・ブラス=霸王雷擊陣
+          ブラストアッシュ=黑妖陣
+          ブラスト・アッシュ=黑妖陣
+          ディクリアリィ=麗和凈
+          ヴィスファランク=靈王結魔彈
+          ゴズヴロー=冥壞屍
+          デモナクリスタル=靈冰陣
+          デモナ・クリスタル=靈冰陣
+          ダムブラス=振動彈
+          ダム・ブラス=振動彈
+          ディグボルト=雷擊破
+          ディグ・ボルト=雷擊破
+          ラグナ・ブレード=神滅斬
+          アストラル・ヴァイン=魔皇靈斬
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -598,6 +638,66 @@ jobs:
           95|敵人資料
           96|小型遊戲資料
           97|版權頁
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/spells.txt' <<'__SSFILE_EOF__'
+          # 魔法資料。中文名用台灣動畫譯名,括號內是華曜攻略本 p91~94 的名稱。格式: 日文(不含中點)|中文名|說明
+          ディクリアリィ|麗和凈(攻略本:迪克里阿里)|單體・白魔法 / MP 那加6 亞美莉亞8 希菲爾2 / 回復戰鬥不能以外的異常情況
+          ホーリィブレス|凈化結界(攻略本:神聖火焰)|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
+          ホーリーブレス|凈化結界(攻略本:神聖火焰)|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
+          リカバリィ|治癒術(攻略本:恢復)|單體・白魔法 / MP 莉娜5 那加4 傑爾加帝斯7 / 回復(100%)
+          リカバリィB|治癒術B(攻略本:恢復B)|範圍・白魔法 / MP 希菲爾4 / 回復(100%)
+          リザレクション|復活|單體・白魔法 / MP 那加8 亞美莉亞12 希菲爾6 / 回復(100%) / 可回復戰鬥不能狀態
+          リザレクションF|復活F|單體・白魔法 / MP 希菲爾6 / 回復(100%) / 可回復戰鬥不能狀態
+          ゼラスブリッド|獸王牙操彈(攻略本:抓拉斯布里德)|單體・黑魔法 / MP 莉娜20 那加24 / 氣絕(55%)
+          ダイナストブレス|霸王冰河烈(攻略本:電擊火焰)|單體・黑魔法 / MP 莉娜18 那加28 亞美莉亞40 / 氣絕(77%)
+          ダイナストブレスB|霸王冰河烈B(攻略本:電擊火焰B)|範圍・黑魔法 / MP 莉娜36 / 氣絕(85%)
+          ダイナストブレスS|霸王冰河烈S(攻略本:電擊火焰S)|直線・黑魔法 / MP 莉娜32 / 氣絕(86%)
+          ドラグスレイブ|龍破斬(攻略本:德拉格斯雷布)|大範圍・黑魔法 / MP 莉娜48 希菲爾80 / 氣絕(100%) / 莉娜最得意的黑魔法,從開始到結束都會用到)
+          ドラグスレイブC|龍破斬C(攻略本:德拉格斯雷布C)|單體・黑魔法 / MP 莉娜40 希菲爾85 / 氣絕(100%)
+          ドラグスレイブF|龍破斬F(攻略本:德拉格斯雷布F)|大範圍・黑魔法 / MP 莉娜60 / 氣絕(100%)
+          ブラストアッシュ|黑妖陣(攻略本:火炎灰燼)|直線・黑魔法 / MP 莉娜8 那加12 / 氣絕(100%) / 給予999的傷害
+          ラグナブレード|神滅斬(攻略本:拉格那之劍)|單體・黑魔法 / MP 莉娜80 / (0%) / 給予999的傷害
+          アストラルヴァイン|魔皇靈斬(攻略本:阿斯特拉法印)|單體 / MP 傑爾加帝斯8
+          ヴィスファランク|靈王結魔彈(攻略本:維斯法蘭克)|單體 / MP 亞美莉亞8
+          エルメキアランス|烈閃槍(攻略本:艾爾梅加之槍)|單體 / MP 莉娜12 那加10 傑爾加帝斯13 / 氣絕(35%) / 雖是精靈魔法但對魔族也有效
+          ゴズヴロー|冥壞屍(攻略本:葛滋布羅)|單體 / MP 莉娜20 那加28 傑爾加帝斯37 / 氣絕(60%)
+          スリーピング|睡眠術(攻略本:睡眠)|單體 / MP 莉娜10 那加10 / 睡(90%)
+          スリーピングN|睡眠N|放射 / MP 那加10 / 睡(100%) / 術者本身也會受到影響
+          ブラムブレイザー|青魔烈彈波(攻略本:布拉姆布雷薩)|單體 / MP 莉娜17 那加14 傑爾加帝斯18 / 氣絕(40%)
+          ラティルト|崩靈裂(攻略本:拉提爾特)|單體 / MP 傑爾加帝斯48 亞美莉亞48 / 氣絕(75%)
+          ラティルトB|崩靈裂B(攻略本:拉提爾特B)|範圍 / MP 傑爾加帝斯78 亞美莉亞72 / 氣絕(85%)
+          ダムブラス|振動彈(攻略本:火焰撞擊)|單體・火系 / MP 莉娜12 那加16 傑爾加帝斯13 / 氣絕(10%)
+          ダムブラスB|振動彈B(攻略本:火焰撞擊B)|範圍・火系 / MP 傑爾加帝斯13 / 氣絕(28%)
+          バーストフレア|烈火球(攻略本:爆裂核融術)|範圍・火系 / MP 莉娜22 那加22 傑爾加帝斯28 / 氣絕(15%)
+          バーストロント|爆煙舞(攻略本:爆裂特偶)|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
+          バーストロンド|爆煙舞(攻略本:爆裂特偶)|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
+          ファイアーボール|火炎球(攻略本:火球)|範圍・火系 / MP 莉娜20 那加19 傑爾加帝斯25 / 氣絕(33%)
+          ファイアーボール※|火球※|範圍・火系 / MP 亞美莉亞24 / 氣絕(50%)
+          ブラストボム|暴爆咒(攻略本:爆烈火藥)|範圍・火系 / MP 莉娜26 那加28 / 氣絕(46%)
+          フレアアロー|炎之矢(攻略本:核融箭)|單體・火系 / MP 莉娜8 那加9 傑爾加帝斯9 / 氣絕(35%)
+          フレアアローN|炎之矢N(攻略本:核融箭N)|三線(印3)・火系 / MP 那加7 / 氣絕(45%)
+          フレアランス|炎之槍(攻略本:核融槍)|直線・火系 / MP 莉娜10 那加13 傑爾加帝斯14 / 氣絕(25%)
+          ボムスブリッド|火藥斯布里德|範圍・火系 / MP 莉娜8 那加9 亞美莉亞10
+          ボムスブリッドB|火藥斯布里德B|範圍・火系 / MP 莉娜8 那加8 亞美莉亞13
+          アイシクルランス|冰之槍(攻略本:冰凍之槍)|直線・冰系 / MP 莉娜10 那加14 傑爾加帝斯16 / 凍結(80%)
+          デモナクリスタル|靈冰陣(攻略本:黛默那水晶)|單體・冰系 / MP 莉娜24 那加26 亞美莉亞27 / 凍結(64%)
+          フリーズアロー|冰之矢(攻略本:冷凍箭)|單體・冰系 / MP 莉娜7 那加10 傑爾加帝斯10 / 氣絕(16%)
+          フリーズアローN|冰之矢N(攻略本:冷凍箭N)|三線(印3)・冰系 / MP 那加9 / 氣絕(45%)
+          フリーズブリッド|冷凍布里德|單體・冰系 / MP 莉娜6 那加8 傑爾加帝斯11
+          ダグハウト|達格豪特|放射・地系 / MP 莉娜11 那加13 傑爾加帝斯17
+          ダグハウトB|達格豪特B|範圍・地系 / MP 莉娜18 傑爾加帝斯24 / 氣絕(機率?)
+          ディルブランド|炸彈陣(攻略本:迪爾布藍德)|放射・地系 / MP 莉娜6 那加8 傑爾加帝斯9 / 氣絕(74%)
+          ディルブランドB|炸彈陣B(攻略本:迪爾布藍德B)|範圍・地系 / MP 莉娜8 傑爾加帝斯11 亞美莉亞10 / 氣絕(65%)
+          メガブランド|超級布藍德|直線・地系 / MP 莉娜14 那加11 傑爾加帝斯14 / 氣絕(24%)
+          エアロボム|飛行炸彈|範圍・風系 / MP 莉娜21 那加17 傑爾加帝斯15 / 氣絕(20%)
+          ディムウィン|魔風(攻略本:迪姆之風)|放射・風系 / MP 莉娜10 那加8 傑爾加帝斯8 / 氣絕(100%) / 捲走範圍內的敵方或我方
+          ディムウィンC|魔風C(攻略本:迪姆之風C)|單體・風系 / MP 傑爾加帝斯8 / 氣絕(100%) / 捲走指定的角色
+          ディムウィンS|魔風S(攻略本:迪姆之風S)|直線・風系 / MP 傑爾加帝斯8 亞美莉亞8 / 氣絕(100%) / 捲走範圍內的敵方
+          ブラムガッシュ|布拉姆加殊|直線・風系 / MP 莉娜9 那加10 傑爾加帝斯11 / 氣絕(20%)
+          ブラムファング|布拉姆之牙|單體・風系 / MP 莉娜8 那加16 傑爾加帝斯26 / 氣絕(50%)
+          ディグボルト|雷擊破(攻略本:迪克電擊)|單體・風系 / MP 莉娜20 那加18 / 麻痺(80%)
+          モノヴォルト|莫娜電擊|單體・風系 / MP 莉娜13 那加14 / 麻痺(72%)
+          ギガスレイブ|重破斬|黑魔法 咒文中威力最強 (AA級),失敗會被黑暗吞噬,副作用多
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/AiClient.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
@@ -1098,7 +1198,20 @@ jobs:
                       }
                   }
                   s = Regex("([\\u4E00-\\u9FFF])[＝=・]([\\u4E00-\\u9FFF])").replace(s, "\$1·\$2")
-                  return s
+                  return tcChars(s)
+              }
+
+              // 譯文裡殘留的日文漢字 (新字體) 和簡體字,轉成台灣用的繁體字
+              private const val TC_FROM = "増撃気剣竜国戦体変様広当楽験読転関効残黒鉄銃雑渋済続絵蔵薬覚駅歯図圧応仮価劇発営団増声処実収参参団圏壊拝残歴観击强术龙气战体变样广当乐验读转关效残黑铁枪杂涩济续绘药觉驿齿图压应价剧发营团声处实收参团圈坏拜历观"
+              private const val TC_TO = "增擊氣劍龍國戰體變樣廣當樂驗讀轉關效殘黑鐵銃雜澀濟續繪藏藥覺驛齒圖壓應假價劇發營團增聲處實收參參團圈壞拜殘歷觀擊強術龍氣戰體變樣廣當樂驗讀轉關效殘黑鐵槍雜澀濟續繪藥覺驛齒圖壓應價劇發營團聲處實收參團圈壞拜歷觀"
+
+              fun tcChars(text: String): String {
+                  val sb = StringBuilder(text.length)
+                  for (c in text) {
+                      val i = TC_FROM.indexOf(c)
+                      sb.append(if (i in 0 until TC_TO.length && i < TC_FROM.length) TC_TO[i] else c)
+                  }
+                  return sb.toString()
               }
 
               // 給 AI 看的名詞對照表 (每行 日文=中文)
@@ -2014,6 +2127,78 @@ jobs:
               }
           }
           __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/SpellGuide.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+
+          /** 魔法選單:辨識到魔法名稱,就顯示中文名、攻擊範圍、消耗 MP 和效果 (資料來自攻略本 p91~94) */
+          object SpellGuide {
+
+              class Spell(val key: String, val name: String, val info: String)
+
+              private var spells: List<Spell>? = null
+
+              private fun norm(s: String): String {
+                  val sb = StringBuilder()
+                  for (c in s) {
+                      if (c == '・' || c == '•' || c == '·' || c == '‧' || c == '.' || c == '。' || c.isWhitespace()) continue
+                      sb.append(c)
+                  }
+                  return sb.toString()
+              }
+
+              private fun load(ctx: Context): List<Spell> {
+                  val s = spells
+                  if (s != null) return s
+                  val out = ArrayList<Spell>()
+                  try {
+                      ctx.assets.open("spells.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                          for (l in lines) {
+                              if (l.startsWith("#")) continue
+                              val p = l.split("|")
+                              if (p.size >= 3) out.add(Spell(p[0], p[1], p[2]))
+                          }
+                      }
+                  } catch (e: Exception) {
+                      // 沒有資料就不顯示
+                  }
+                  spells = out
+                  return out
+              }
+
+              private fun bigrams(s: String): Set<String> {
+                  val out = HashSet<String>()
+                  for (i in 0 until s.length - 1) out.add(s.substring(i, i + 2))
+                  return out
+              }
+
+              /** 這一行如果是魔法名稱就回傳對應魔法 (容許辨識錯一兩個字),否則 null */
+              fun match(ctx: Context, line: String): Spell? {
+                  val t = norm(line)
+                  if (t.length < 4) return null
+                  // 只看片假名和長音,魔法名稱都是片假名
+                  val kata = t.filter { c -> c in '゠'..'ヿ' }
+                  if (kata.length < 4 || kata.length * 10 < t.length * 6) return null
+                  var best: Spell? = null
+                  var bestScore = 0f
+                  val mine = bigrams(kata)
+                  if (mine.isEmpty()) return null
+                  for (sp in load(ctx)) {
+                      val other = bigrams(sp.key)
+                      if (other.isEmpty()) continue
+                      val inter = mine.count { x -> other.contains(x) }
+                      val union = mine.size + other.size - inter
+                      val score = if (union == 0) 0f else inter.toFloat() / union
+                      if (score > bestScore) {
+                          bestScore = score
+                          best = sp
+                      }
+                  }
+                  return if (bestScore >= 0.6f) best else null
+              }
+          }
+          __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/SubtitleView.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
 
@@ -2618,6 +2803,8 @@ jobs:
                       v.region = null
                       v.invalidate()
                   }
+                  history.clear()
+                  ui.removeCallbacks(emptyHide)
                   hideSubtitle()
                   hideGuideHint()
               }
@@ -2662,10 +2849,10 @@ jobs:
                                   ui.post { onFrame(bmp) }
                               } else {
                                   val nowTs = SystemClock.uptimeMillis()
-                                  if (nowTs - lastAutoTs >= 350 && autoOn()) {
+                                  if (nowTs - lastAutoTs >= 250 && autoOn()) {
                                       lastAutoTs = nowTs
                                       try {
-                                          val rows = regionRows(img.height)
+                                          val rows = captureRows(img.height)
                                           val crop = cropRegion(img, rows)
                                           val top = rows[0]
                                           ui.post { onAutoFrame(crop, top) }
@@ -2782,7 +2969,7 @@ jobs:
               // ---------------------------------------------------------------- 辨識 + 翻譯
 
               private fun process(full: Bitmap): List<ResultView.Item> {
-                  val rows = regionRows(full.height)
+                  val rows = captureRows(full.height)
                   val topOffset = rows[0]
                   val cropH = rows[1] - rows[0]
                   val src = if (cropH != full.height) {
@@ -2799,6 +2986,7 @@ jobs:
 
               // src 是「翻譯範圍」裁切出來的圖,topOffset 是它在整個螢幕上的 y 位置。src 由呼叫的人負責回收。
               private fun recognizeAndTranslate(src: Bitmap, topOffset: Int, auto: Boolean = false): List<ResultView.Item> {
+                  val tStart = SystemClock.uptimeMillis()
                   lastRegion = Rect(0, topOffset, src.width, topOffset + src.height)
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val engine = prefs.getString("engine", "both") ?: "both"
@@ -2875,7 +3063,7 @@ jobs:
                           for (b in text.textBlocks) {
                               for (ln in b.lines) {
                                   val box = ln.boundingBox ?: continue
-                                  val jp = ln.text.replace(" ", "").replace("　", "")
+                                  val jp = cleanLine(ln.text) ?: continue
                                   if (!isJapanese(jp)) continue
                                   val r = Rect(
                                       (box.left / scale).toInt(),
@@ -2893,7 +3081,21 @@ jobs:
                       }
                   }
                   lastRaw = raw.toString()
+                  lastOcrMs = SystemClock.uptimeMillis() - tStart
                   val blocks = pickBestRows(cands)
+
+                  // 魔法選單:辨識到魔法名稱就顯示中文名、範圍、消耗 MP 和效果,不去翻譯
+                  val spellHits = ArrayList<SpellGuide.Spell>()
+                  for (b in blocks) {
+                      val sp = SpellGuide.match(applicationContext, b.text)
+                      if (sp != null && spellHits.none { x -> x.key == sp.key }) spellHits.add(sp)
+                  }
+                  val spellMode = prefs.getBoolean("spell_mode", false)
+                  if (spellHits.size >= 2 || (spellHits.size == 1 && spellMode)) {
+                      val rect = Rect(0, topOffset, src.width, topOffset + src.height)
+                      val zh = spellHits.joinToString("\n") { x -> x.name + ":" + x.info }
+                      return listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 6), spellHits.joinToString(" ") { x -> x.key }))
+                  }
 
                   val out = ArrayList<ResultView.Item>()
                   val merged = merge(blocks)
@@ -2904,8 +3106,11 @@ jobs:
                   }
                   ui.post { setLabel("譯") }
                   for (m in merged) {
+                      m.text = tidyJp(m.text)
+                      if (m.text.length < 2) continue
                       out.add(ResultView.Item(m.rect, translateText(tr, m.text, engine), m.lineH, m.text))
                   }
+                  lastTrMs = SystemClock.uptimeMillis() - tStart - lastOcrMs
                   return out
               }
 
@@ -2913,6 +3118,35 @@ jobs:
                   (getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("mode", "auto") ?: "auto") == "auto"
 
               private var paused = false
+              @Volatile
+              private var lastOcrMs = 0L
+              @Volatile
+              private var lastTrMs = 0L
+
+              // 譯文框保留最近 3 段對話,新的來了才把最舊的擠掉
+              private class Hist(var orig: String, var zh: String)
+
+              private val history = ArrayList<Hist>()
+              private val emptyHide = Runnable { hideOverlay() }
+
+              private fun pushHistory(list: List<ResultView.Item>) {
+                  val orig = list.joinToString(" ") { x -> x.orig }
+                  val zh = list.joinToString("\n") { x -> x.text }
+                  val last = history.lastOrNull()
+                  if (last != null && sameSentence(orig, last.orig)) {
+                      last.orig = orig
+                      last.zh = zh
+                  } else {
+                      history.add(Hist(orig, zh))
+                      while (history.size > 3) history.removeAt(0)
+                  }
+              }
+
+              private fun renderHistory() {
+                  if (history.isEmpty()) return
+                  val zhAll = if (history.size == 1) history[0].zh else history.joinToString("\n") { h -> "▸ " + h.zh }
+                  showSubtitle(zhAll, history.last().orig)
+              }
 
               // 目前畫面上顯示的那一句 (原文 + 譯文),自動模式下辨識到同一句就不再翻譯
               @Volatile
@@ -2935,6 +3169,8 @@ jobs:
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
                   latestCrop = null
+                  history.clear()
+                  ui.removeCallbacks(emptyHide)
                   hideSubtitle()
                   hideGuideHint()
                   setLabel(baseLabel())
@@ -2952,6 +3188,13 @@ jobs:
               }
 
               private fun baseLabel(): String = if (paused && autoOn()) "停" else if (autoOn()) "自" else "譯"
+
+              // 魔法選單模式:翻譯範圍往上延伸到畫面最上方,才看得到右上角的魔法清單
+              private fun captureRows(h: Int): IntArray {
+                  val r = regionRows(h)
+                  if (getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("spell_mode", false)) r[0] = 0
+                  return r
+              }
 
               // 翻譯範圍 (以螢幕高度的百分比設定),回傳 [上緣, 下緣] 的像素位置
               private fun regionRows(h: Int): IntArray {
@@ -3031,7 +3274,7 @@ jobs:
                   latestTop = top
                   // 字幕還在跑的時候一直重設計時,停住 0.7 秒後才開始辨識
                   ui.removeCallbacks(stableRun)
-                  ui.postDelayed(stableRun, 450)
+                  ui.postDelayed(stableRun, 300)
               }
 
               private fun runAuto() {
@@ -3061,7 +3304,13 @@ jobs:
                               doneJp = ""
                               shownJp = ""
                               shownItems = null
-                              hideOverlay()
+                              if (autoOn()) {
+                                  // 對話框消失了,譯文先留著讓你看完,20 秒後自動收起
+                                  ui.removeCallbacks(emptyHide)
+                                  ui.postDelayed(emptyHide, 20000)
+                              } else {
+                                  hideOverlay()
+                              }
                           } else {
                               val jpNow = list.joinToString("") { x -> x.orig }
                               if (jpNow != doneJp) {
@@ -3265,10 +3514,50 @@ jobs:
                   return z
               }
 
+              private val checker = Executors.newSingleThreadExecutor()
+
+              private fun scheduleSmartCheck(tr: Translator, jp: String, z1: String) {
+                  checker.execute {
+                      val why = try {
+                          suspicious(tr, jp, z1)
+                      } catch (e: Exception) {
+                          null
+                      }
+                      if (why == null) {
+                          rememberAi(z1)
+                          return@execute
+                      }
+                      val ai = aiCall(jp, true) ?: return@execute
+                      cachePut("smart", jp, ai)
+                      ui.post { upgradeShown(jp, z1, ai) }
+                  }
+              }
+
+              // 背景檢查發現 Google 翻得怪、AI 翻好了,就把畫面上的譯文換成 AI 的
+              private fun upgradeShown(jp: String, old: String, ai: String) {
+                  var changed = false
+                  for (h in history) {
+                      if (h.zh.contains(old)) {
+                          h.zh = h.zh.replace(old, ai)
+                          changed = true
+                      }
+                  }
+                  val items = shownItems
+                  if (items != null) {
+                      shownItems = items.map { x -> if (x.orig == jp) ResultView.Item(x.rect, ai, x.lineH, x.orig) else x }
+                  }
+                  if (changed && autoOn() && !paused) renderHistory()
+              }
+
               private fun translateUncached(tr: Translator, jp0: String, engine: String): String {
                   val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
                   if (engine == "smart") {
                       val z1 = translateText(tr, jp0, "both")
+                      if (autoOn()) {
+                          // 自動模式:先把 Google 的結果顯示出來,檢查和 AI 在背景進行,有更好的再換掉
+                          scheduleSmartCheck(tr, jp0, z1)
+                          return z1
+                      }
                       val why = suspicious(tr, jp0, z1)
                       if (why == null) {
                           rememberAi(z1)
@@ -3284,7 +3573,7 @@ jobs:
                   }
                   // 句子很長 (超過 45 字) 才拆開翻,短的前後句一起翻,語氣才會連貫
                   val parts = jp.split(Regex("(?<=[。！？!?…])")).map { x -> x.trim() }.filter { x -> x.isNotEmpty() }
-                  if (parts.size > 1 && jp.length > 45) {
+                  if (parts.size >= 3 || (parts.size > 1 && jp.length > 45)) {
                       return parts.joinToString("") { x -> translateOne(tr, x, engine) }
                   }
                   return translateOne(tr, jp, engine)
@@ -3389,7 +3678,12 @@ jobs:
                   for (row in rows) {
                       val score = HashMap<Int, Int>()
                       for (c in row) {
-                          score[c.v] = (score[c.v] ?: 0) + c.blk.text.length
+                          var q = 0
+                          for (ch in c.blk.text) {
+                              if (ch in '\u3040'..'\u30FF') q += 2 else if (ch in '\u4E00'..'\u9FFF') q += 2 else q += 1
+                          }
+                          if (c.v == 3) q = q * 130 / 100
+                          score[c.v] = (score[c.v] ?: 0) + q
                       }
                       var bestV = -1
                       var bestS = -1
@@ -3626,6 +3920,10 @@ jobs:
                       if (paused) resumeAuto() else pauseAuto()
                       closeMenu()
                   })
+                  addRow({ "魔法選單模式:" + (if (prefs.getBoolean("spell_mode", false)) "開 (看得到右上角魔法清單)" else "關") }, {
+                      prefs.edit().putBoolean("spell_mode", !prefs.getBoolean("spell_mode", false)).apply()
+                      curSig = null
+                  })
                   addRow({ "翻譯方式:" + engineName() }, {
                       val next = when (prefs.getString("engine", "both")) {
                           "both" -> "online"
@@ -3672,6 +3970,7 @@ jobs:
                       }
                       toast("已重設,下次翻譯時會回到預設位置")
                   })
+                  addRow({ "上次耗時:辨識 " + lastOcrMs + " 毫秒、翻譯 " + lastTrMs + " 毫秒" }, { })
                   addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
                   })
@@ -3791,6 +4090,40 @@ jobs:
                   if (scaled !== src) scaled.recycle()
                   return out
               }
+
+              // 清理一行辨識結果:狀態欄數字、背景亂碼整行丟掉;日文裡混進的英數字雜訊去掉
+              private fun cleanLine(raw: String): String? {
+                  var s = raw.replace(" ", "").replace("　", "")
+                  var kana = 0
+                  var kanji = 0
+                  for (c in s) {
+                      if (c in '\u3040'..'\u30FF') kana++ else if (c in '\u4E00'..'\u9FFF') kanji++
+                  }
+                  val jpN = kana + kanji
+                  if (jpN == 0) return s
+                  if (jpN * 10 < s.length * 6) return null
+                  if (kana < 2 && kanji < 4) return null
+                  val noise = "*|[]{}<>=+_~^#@%&/\\`\$"
+                  val sb = StringBuilder()
+                  for (c in s) {
+                      if (c in noise) continue
+                      sb.append(c)
+                  }
+                  s = sb.toString()
+                  // 英文字母雜訊去掉,但遊戲裡真的會出現的 HP、MP 等保留
+                  s = Regex("[A-Za-z]+").replace(s) { m ->
+                      if (m.value.uppercase() in setOf("HP", "MP", "AT", "OK", "DATE", "STEP", "HIT", "PAGE")) m.value else ""
+                  }
+                  // 只去掉「雜點記號後面接的數字」(像 なによ·1),不動句中或句首的數字 (價格、數量)
+                  s = s.replace(Regex("[·•・.][0-9０-９]+$"), "")
+                  s = s.replace(Regex("[·•]+$"), "")
+                  s = s.replace(Regex("^[トﾄ]+(?=[\\u3041-\\u3096\\u4E00-\\u9FFF])"), "")
+                  return if (s.isEmpty()) null else s
+              }
+
+              // 句子結尾後面多出來的 1 個殘字 (淡入中的字、游標) 去掉。兩個字以上可能是真的下一句,不動
+              private fun tidyJp(t: String): String =
+                  t.replace(Regex("(?<=[。！？!?])[ぁ-んァ-ヶ]$"), "")
 
               // 這一行要不要翻:日文至少 2 個字,或是像樣的英文 (至少 5 個字母,字母佔大部分)
               private fun isJapanese(s: String): Boolean {
@@ -3924,13 +4257,10 @@ jobs:
                           o.region = null
                           o.invalidate()
                       }
-                      if (list.isEmpty()) {
-                          hideSubtitle()
-                      } else {
-                          showSubtitle(
-                              list.joinToString("\n") { x -> x.text },
-                              list.joinToString(" ") { x -> x.orig }
-                          )
+                      if (list.isNotEmpty()) {
+                          ui.removeCallbacks(emptyHide)
+                          pushHistory(list)
+                          renderHistory()
                       }
                       return
                   }
