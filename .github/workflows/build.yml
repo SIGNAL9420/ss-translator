@@ -445,7 +445,8 @@ jobs:
                       val stream = if (code in 200..299) c.inputStream else c.errorStream
                       val text = stream?.bufferedReader(Charsets.UTF_8)?.use { r -> r.readText() } ?: ""
                       if (code !in 200..299) {
-                          throw IllegalStateException("AI 回應 HTTP " + code + ":" + text.take(200))
+                          val ra = c.getHeaderField("Retry-After")
+                          throw IllegalStateException("AI 回應 HTTP " + code + (if (ra != null) " [retry-after=" + ra.trim() + "]" else "") + ":" + text.take(200))
                       }
                       val choices = JSONObject(text).getJSONArray("choices")
                       val msg = choices.getJSONObject(0).getJSONObject("message")
@@ -549,6 +550,81 @@ jobs:
                   if (z.isEmpty()) z = clean(t)
                   if (z.isEmpty() || z == "無") return null
                   return Pair(orig.toString().trim(), z)
+              }
+          }
+
+          /**
+           * AI 用量控制 (背景運作,各家各自的規則,互不影響):
+           *
+           * 【Google Gemini】
+           *  - 收到 429 就暫停 AI 1 分鐘 (每分鐘額度會自己恢復),期間改用 Google 翻譯。
+           *  - 429 訊息說是「每日」額度,就暫停到下一個太平洋時間午夜 (Gemini 每日額度重置時間)。
+           *  - 背景默默記今天呼叫幾次,超過 1500 次先不送。
+           *
+           * 【其他家 (OpenAI / Groq / 自訂)】
+           *  - 沒有每日次數保險。收到 429 時,照伺服器回的 Retry-After 秒數暫停 (10 秒到 24 小時),
+           *    沒有的話暫停 1 分鐘。
+           */
+          object AiQuota {
+              @Volatile
+              private var blockedUntil = 0L
+
+              private const val GEMINI_DAILY_SOFT_CAP = 1500
+
+              private val pt = java.util.TimeZone.getTimeZone("America/Los_Angeles")
+
+              private fun isGemini(ctx: Context): Boolean {
+                  val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  return (p.getString("ai_url", "") ?: "").contains("generativelanguage.googleapis.com")
+              }
+
+              private fun dayKey(): String {
+                  val f = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+                  f.timeZone = pt
+                  return f.format(java.util.Date())
+              }
+
+              // 下一個太平洋時間午夜 (多加 1 分鐘保險)
+              private fun nextResetMs(): Long {
+                  val c = java.util.Calendar.getInstance(pt)
+                  c.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                  c.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                  c.set(java.util.Calendar.MINUTE, 1)
+                  c.set(java.util.Calendar.SECOND, 0)
+                  c.set(java.util.Calendar.MILLISECOND, 0)
+                  return c.timeInMillis
+              }
+
+              /** 可以呼叫就回傳 null;暫停中回傳原因 */
+              @Synchronized
+              fun tryAcquire(ctx: Context): String? {
+                  val now = System.currentTimeMillis()
+                  if (now < blockedUntil) return "AI 暫停中"
+                  if (isGemini(ctx)) {
+                      val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                      val day = dayKey()
+                      var n = if (p.getString("ai_day", "") == day) p.getInt("ai_day_n", 0) else 0
+                      if (n >= GEMINI_DAILY_SOFT_CAP) {
+                          blockedUntil = nextResetMs()
+                          return "AI 暫停中"
+                      }
+                      n += 1
+                      p.edit().putString("ai_day", day).putInt("ai_day_n", n).apply()
+                  }
+                  return null
+              }
+
+              /** 伺服器回 429 */
+              fun onServer429(ctx: Context, msg: String) {
+                  val now = System.currentTimeMillis()
+                  if (isGemini(ctx)) {
+                      val daily = msg.contains("PerDay", true) || msg.contains("per day", true) || msg.contains("daily", true)
+                      blockedUntil = if (daily) nextResetMs() else now + 60 * 1000L
+                      return
+                  }
+                  val m = Regex("retry-after=(\\d+)").find(msg)
+                  val sec = if (m != null) (m.groupValues[1].toLongOrNull() ?: 60L).coerceIn(10L, 24L * 3600L) else 60L
+                  blockedUntil = now + sec * 1000L
               }
           }
           __SSFILE_EOF__
@@ -2346,7 +2422,6 @@ jobs:
                           val ls = lastAivSig
                           val lr = lastAivResult
                           if (ls != null && lr != null && ls.size == s2.size && sigDiff(ls, s2) <= 20) return lr
-                          if (System.currentTimeMillis() < aiBlockedUntil) throw IllegalStateException("AI 額度暫停中")
                           ui.post { setLabel("AI") }
                           val r = AiClient.translateImage(applicationContext, src, aiHistory.toList())
                           if (r == null) return emptyList()
@@ -2359,8 +2434,10 @@ jobs:
                           return res
                       } catch (e: Exception) {
                           val msg = e.message ?: e.toString()
-                          if (msg.contains("429")) noteQuota()
-                          ui.post { toast("AI 看圖失敗,改用文字辨識:" + msg.take(60)) }
+                          if (msg.contains("429")) {
+                              throw IllegalStateException("AI 額度滿了 (429),請到選單改用線上或離線翻譯")
+                          }
+                          throw IllegalStateException("AI 看圖失敗:" + msg.take(60) + " (可到選單改用線上或離線翻譯)")
                       }
                   }
                   if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst") {
@@ -2383,14 +2460,23 @@ jobs:
                   val raw = StringBuilder()
                   val cands = ArrayList<Cand>()
                   try {
+                      // 4 種版本同時送去辨識,比一個一個等快很多
+                      ui.post { setLabel("辨") }
+                      val jobs = ArrayList<com.google.android.gms.tasks.Task<com.google.mlkit.vision.text.Text>?>()
                       for (vi in variants.indices) {
-                          val stepNow = vi + 1
-                          val total = variants.size
-                          ui.post { setLabel(stepNow.toString() + "/" + total) }
-                          val bmp = variants[vi].first
+                          jobs.add(
+                              try {
+                                  rec.process(InputImage.fromBitmap(variants[vi].first, 0))
+                              } catch (e: Exception) {
+                                  null
+                              }
+                          )
+                      }
+                      for (vi in variants.indices) {
+                          val job = jobs[vi] ?: continue
                           val scale = variants[vi].second
                           val text = try {
-                              Tasks.await(rec.process(InputImage.fromBitmap(bmp, 0)), 40, TimeUnit.SECONDS)
+                              Tasks.await(job, 40, TimeUnit.SECONDS)
                           } catch (e: Exception) {
                               null
                           }
@@ -2555,7 +2641,7 @@ jobs:
                   latestTop = top
                   // 字幕還在跑的時候一直重設計時,停住 0.7 秒後才開始辨識
                   ui.removeCallbacks(stableRun)
-                  ui.postDelayed(stableRun, 700)
+                  ui.postDelayed(stableRun, 450)
               }
 
               private fun runAuto() {
@@ -2743,26 +2829,18 @@ jobs:
               }
 
               // AI 額度用完 (429) 後暫停一段時間不再呼叫,避免一直失敗
-              @Volatile
-              private var aiBlockedUntil = 0L
 
-              private var quotaHits = 0
-              private var lastQuotaAt = 0L
-
-              // 429 之後暫停 AI:第一次 5 分鐘,一小時內再發生就 60 分鐘 (多半是每日額度用完)
-              private fun noteQuota(): Int {
-                  val now = System.currentTimeMillis()
-                  quotaHits = if (now - lastQuotaAt < 60 * 60 * 1000L) quotaHits + 1 else 1
-                  lastQuotaAt = now
-                  val mins = if (quotaHits >= 2) 60 else 5
-                  aiBlockedUntil = now + mins * 60 * 1000L
-                  return mins
-              }
-
-              private fun aiCall(jp: String): String? {
+              // guarded = 智慧模式:收到 429 就暫停 AI 1 分鐘。使用者自己選「每句都用 AI」時不暫停,每句都照樣送 AI
+              private fun aiCall(jp: String, guarded: Boolean): String? {
                   val cfg = AiClient.config(applicationContext)
-                  if (cfg == null || cfg.key.isEmpty()) return null
-                  if (System.currentTimeMillis() < aiBlockedUntil) return null
+                  if (cfg == null || cfg.key.isEmpty()) {
+                      if (!guarded) throw IllegalStateException("還沒設定 AI 金鑰,請回主畫面填寫,或到選單改用線上/離線翻譯")
+                      return null
+                  }
+                  if (guarded) {
+                      val denied = AiQuota.tryAcquire(applicationContext)
+                      if (denied != null) return null
+                  }
                   return try {
                       val z = AiClient.translateText(applicationContext, jp, aiHistory.toList())
                       val fixed = Glossary.fix(applicationContext, z)
@@ -2771,9 +2849,15 @@ jobs:
                   } catch (e: Exception) {
                       val msg = e.message ?: e.toString()
                       if (msg.contains("429")) {
-                          val mins = noteQuota()
-                          ui.post { toast("AI 額度用完了," + mins + " 分鐘內改用 Google 翻譯") }
+                          if (guarded) {
+                              AiQuota.onServer429(applicationContext, msg)
+                              ui.post { toast("AI 額度滿了 (429),暫停 AI 1 分鐘,這段先用 Google 翻譯") }
+                          } else {
+                              // 使用者自己選了「每句都用 AI」,額度滿了不自動換翻譯方式,由使用者到選單自己切換
+                              throw IllegalStateException("AI 額度滿了 (429),請到選單改用線上或離線翻譯")
+                          }
                       } else {
+                          if (!guarded) throw IllegalStateException("AI 失敗:" + msg.take(60) + " (可到選單改用線上或離線翻譯)")
                           ui.post { toast("AI 失敗,改用 Google 翻譯:" + msg.take(60)) }
                       }
                       null
@@ -2800,13 +2884,13 @@ jobs:
                           rememberAi(z1)
                           return z1
                       }
-                      return aiCall(jp0) ?: z1
+                      return aiCall(jp0, true) ?: z1
                   }
                   if (engine == "aifirst") {
-                      return aiCall(jp0) ?: translateText(tr, jp0, "both")
+                      return aiCall(jp0, true) ?: translateText(tr, jp0, "both")
                   }
                   if (engine == "ai" || engine == "aiv") {
-                      return aiCall(jp) ?: translateText(tr, jp, "both")
+                      return aiCall(jp, false) ?: throw IllegalStateException("AI 沒有回應,請到選單改用線上或離線翻譯")
                   }
                   // 句子很長 (超過 45 字) 才拆開翻,短的前後句一起翻,語氣才會連貫
                   val parts = jp.split(Regex("(?<=[。！？!?…])")).map { x -> x.trim() }.filter { x -> x.isNotEmpty() }
@@ -3143,11 +3227,14 @@ jobs:
                       else -> "線上優先,失敗改離線"
                   }
 
-                  addRow({ "版本 2.2 (確認是新版)" }, { })
                   addRow({ "翻譯時機:" + (if (autoOn()) "自動" else "手動") }, {
                       val next = if (autoOn()) "manual" else "auto"
                       prefs.edit().putString("mode", next).apply()
                       applyModeChange()
+                  })
+                  addRow({ if (paused) "恢復自動翻譯" else "暫停自動翻譯" }, {
+                      if (paused) resumeAuto() else pauseAuto()
+                      closeMenu()
                   })
                   addRow({ "翻譯方式:" + engineName() }, {
                       val next = when (prefs.getString("engine", "both")) {
@@ -3174,9 +3261,26 @@ jobs:
                       closeMenu()
                       showRegionEditor()
                   })
-                  addRow({ if (paused) "恢復自動翻譯" else "暫停自動翻譯" }, {
-                      if (paused) resumeAuto() else pauseAuto()
-                      closeMenu()
+                  addRow({ "調整譯文框位置 / 大小" }, {
+                      if (!autoOn()) {
+                          toast("譯文框只在「自動」模式使用")
+                      } else {
+                          closeMenu()
+                          showSubtitle("拖曳這裡可以移動\n拖曳右下角的三角形可以調整大小", "(範例文字)")
+                      }
+                  })
+                  addRow({ "重設譯文框位置" }, {
+                      prefs.edit().remove("sub_x").remove("sub_y").remove("sub_w").remove("sub_h").apply()
+                      val sv = subtitle
+                      if (sv != null) {
+                          try {
+                              wm.removeView(sv)
+                          } catch (e: Exception) {
+                              // ignore
+                          }
+                          subtitle = null
+                      }
+                      toast("已重設,下次翻譯時會回到預設位置")
                   })
                   addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
@@ -3200,27 +3304,6 @@ jobs:
                           ov.showOrig = now
                           ov.invalidate()
                       }
-                  })
-                  addRow({ "調整譯文框位置 / 大小" }, {
-                      if (!autoOn()) {
-                          toast("譯文框只在「自動」模式使用")
-                      } else {
-                          closeMenu()
-                          showSubtitle("拖曳這裡可以移動\n拖曳右下角的三角形可以調整大小", "(範例文字)")
-                      }
-                  })
-                  addRow({ "重設譯文框位置" }, {
-                      prefs.edit().remove("sub_x").remove("sub_y").remove("sub_w").remove("sub_h").apply()
-                      val sv = subtitle
-                      if (sv != null) {
-                          try {
-                              wm.removeView(sv)
-                          } catch (e: Exception) {
-                              // ignore
-                          }
-                          subtitle = null
-                      }
-                      toast("已重設,下次翻譯時會回到預設位置")
                   })
                   addRow({ "立即翻譯一次" }, {
                       closeMenu()
