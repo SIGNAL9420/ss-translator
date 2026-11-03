@@ -2896,8 +2896,38 @@ jobs:
               @Volatile
               private var lastWasSpell = false
 
-              private fun showHelpBox(zh: String, r: Rect) {
+              private fun restoreSubtitle() {
+                  val sh = subShift ?: return
+                  val sl = subtitleLp
+                  val sv = subtitle
+                  subShift = null
+                  if (sl != null && sv != null) {
+                      sl.y = sh[0]
+                      try {
+                          wm.updateViewLayout(sv, sl)
+                      } catch (e: Exception) {
+                      }
+                  }
+              }
+
+              private fun showHelpBox(zh: String, r0: Rect) {
                   helpMiss = 0
+                  var r = r0
+                  val sl = subtitleLp
+                  val sv = subtitle
+                  if (sl != null && sv != null && sv.visibility == View.VISIBLE) {
+                      if (sl.y < r.bottom && sl.y + sl.height > r.top) {
+                          // 兩個框碰到了:說明框在上面,魔法清單往下移到說明框下面
+                          if (subShift == null) subShift = intArrayOf(sl.y)
+                          sl.y = r.bottom + 4
+                          try {
+                              wm.updateViewLayout(sv, sl)
+                          } catch (e: Exception) {
+                          }
+                      } else {
+                          restoreSubtitle()
+                      }
+                  }
                   var v = helpView
                   if (v == null) {
                       v = TextView(this)
@@ -2905,6 +2935,7 @@ jobs:
                       v.setBackgroundColor(0xE6101820.toInt())
                       v.setPadding(dp(8), dp(6), dp(8), dp(6))
                       v.textSize = 15f
+                      v.setAutoSizeTextTypeUniformWithConfiguration(10, 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
                       val lp = WindowManager.LayoutParams(
                           r.width(), r.height(),
                           WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -2945,6 +2976,7 @@ jobs:
                   helpBoxRect = null
                   helpMiss = 0
                   helpView?.visibility = View.GONE
+                  restoreSubtitle()
               }
               private var lastHelpZh = ""
               private val SPELL_CHARS = mapOf(
@@ -2972,6 +3004,8 @@ jobs:
               private var buttonLp: WindowManager.LayoutParams? = null
               private var overlay: ResultView? = null
               private var subtitle: SubtitleView? = null
+              private var subtitleLp: WindowManager.LayoutParams? = null
+              private var subShift: IntArray? = null
               private var menuView: View? = null
 
               private var recognizer: TextRecognizer? = null
@@ -3456,7 +3490,7 @@ jobs:
                           looksMenu = false
                       }
                       if (!looksMenu) {
-                          ui.post { helpMissed() }
+                          ui.post { hideHelpBox() }
                           if (engine == "aiv") return runAiv()
                           val cut = regionRows(readMetrics()[1])[0] - topOffset
                           if (cut > 0 && cut < src.height - 40) {
@@ -3580,9 +3614,9 @@ jobs:
                       val hz = helpZh
                       if (hz != null) {
                           val bodyBottom = body.maxOfOrNull { x -> x.rect.bottom } ?: hr.bottom
-                          val top = bodyBottom + 10
-                          val h = minOf(src.height + topOffset - top - 60, 380)
-                          if (h > 80) {
+                          val top = maxOf(bodyBottom + 10, hr.bottom + (hr.height() * 4.8f).toInt())
+                          val h = minOf(src.height + topOffset - top - 60, maxOf(hr.height() * 4, 120))
+                          if (h > 60) {
                               val br = Rect(src.width / 20, top, src.width - src.width / 20, top + h)
                               ui.post { showHelpBox(hz, br) }
                           }
@@ -3641,7 +3675,7 @@ jobs:
                       val page = SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
                       if (page != null) spellMiss.clear()
-                      val zh = listHits.joinToString("\n") { x -> x.name + ":" + (if (cur != null) SpellGuide.forChar(x.info, cur) else x.info) }
+                      val zh = listHits.joinToString("\n") { x -> x.name + ":" + x.info.split(" / ").filter { q -> !q.startsWith("MP ") }.joinToString(" / ") }
                       val zhList = if (spellMiss.isEmpty()) zh else zh + "\n" + spellMiss.joinToString("\n") { m -> m + ":(魔法資料裡找不到)" }
                       val zhAll = zhList
                       val res = listOf(ResultView.Item(rect, zhAll, maxOf(1, src.height / 6), "\u0001" + listHits.joinToString(" ") { x -> x.key }))
@@ -3818,7 +3852,7 @@ jobs:
                   }
                   val sig = signature(crop)
                   val prev = curSig
-                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig) <= (if (doneJp.isNotEmpty()) 30 else 6)) {
+                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig) <= (if (doneJp.isNotEmpty() && !doneJp.startsWith("\u0001") && helpBoxRect == null) 30 else 6)) {
                       crop.recycle()
                       return
                   }
@@ -3858,10 +3892,13 @@ jobs:
                               doneJp = ""
                               shownJp = ""
                               shownItems = null
-                              if (autoOn()) {
+                              if (helpBoxRect != null) {
+                                  // HELP 說明正在顯示 (只有說明、沒有清單),先不收起來
+                                  ui.removeCallbacks(emptyHide)
+                              } else if (autoOn()) {
                                   // 對話框消失了,譯文先留著讓你看完,20 秒後自動收起
                                   ui.removeCallbacks(emptyHide)
-                                  ui.postDelayed(emptyHide, if (lastWasSpell) 800L else 20000L)
+                                  ui.postDelayed(emptyHide, if (lastWasSpell) 300L else 20000L)
                               } else {
                                   hideOverlay()
                               }
@@ -4333,6 +4370,7 @@ jobs:
                   }
                   wm.addView(v, lp)
                   subtitle = v
+                  subtitleLp = lp
                   bringButtonToFront()
                   return v
               }
