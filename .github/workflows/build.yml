@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.1"
+                  versionName = "3.2"
               }
 
               buildTypes {
@@ -647,7 +647,13 @@ jobs:
           莉娜|4|ディル・ブランド|ディル・ブランドB|ダグ・ハウト|ダグ・ハウトB|メガ・ブランド|スリーピング
           莉娜|5|ボム・スプリッド|ボム・スプリッドB|ダム・ブラス|エルメキア・ランス|ブラム・ブレイザー|ゴズヴ・ロー
           莉娜|6|リカバリィ|ブラスト・アッシュ|ダイナスト・ブレス|ダイナスト・ブレスS|ダイナスト・ブレスB|ゼラス・ブリッド
-          莉娜|7|ドラグ・スレイブ|ドラグ・スレイブC|ドラグ・スレイブF|ラグナ・ブレード
+          莉娜|7|ドラグ・スレイブ|ドラグ・スレイブF|ドラグ・スレイブC|ラグナ・ブレード
+          那加|1|フレア・アローN|フレア・アロー|フレア・ランス|バースト・ロンド|ファイアー・ボール|バースト・フレア
+          那加|2|ブラスト・ボム|フリーズ・ブリッド|フリーズ・アローN|フリーズ・アロー|アイシクル・ランス|デモナ・クリスタル
+          那加|3|ディム・ウィン|ブラム・ガッシュ|ブラム・ファング|エアロ・ボム|モノ・ヴォルト|ディグ・ヴォルト
+          那加|4|ディル・ブランド|ダグ・ハウト|メガ・ブランド|スリーピング|スリーピングN|ボム・スプリッド
+          那加|5|ボム・スプリッドB|ダム・ブラス|エルメキア・ランス|ブラム・ブレイザー|ゴズヴ・ロー|リカバリィ
+          那加|6|ディクリアリィ|リザレクション|ブラスト・アッシュ|ゼラス・ブリッド|ダイナスト・ブレス
           __SSFILE_EOF__
           cat > 'app/src/main/assets/spells.txt' <<'__SSFILE_EOF__'
           # 魔法資料,中文名用台灣動畫譯名。格式: 日文(不含中點)|中文名|說明
@@ -1559,7 +1565,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.1 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.2 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2364,20 +2370,43 @@ jobs:
                   return out
               }
 
-              /** 辨識到的魔法如果大多落在某一頁 (莉娜的選單每頁固定 6 個),就把那一頁完整列出,不怕有幾行沒認出來 */
+              private val charNames = mapOf(
+                  "リナ" to "莉娜", "ナーガ" to "那加", "アメリア" to "亞美莉亞",
+                  "ゼルガディス" to "傑爾加帝斯", "ゼル" to "傑爾加帝斯", "シルフィール" to "希菲爾",
+                  "ガウリイ" to "高里"
+              )
+
+              /** 狀態欄上的角色名稱 (容許辨識錯一個字),不是角色名稱就回傳 null */
+              fun charOf(line: String): String? {
+                  val t = line.replace(" ", "").replace("　", "").replace("・", "")
+                  if (t.isEmpty() || t.length > 8) return null
+                  charNames[t]?.let { return it }
+                  for ((k, v) in charNames) {
+                      if (k.length >= 3 && Math.abs(k.length - t.length) <= 1 && lev(t, k) <= 1) return v
+                  }
+                  return null
+              }
+
+              /** 辨識到的魔法如果大多落在某一頁 (莉娜、那加的選單每頁固定),就把那一頁完整照畫面順序列出 */
               fun pageFor(ctx: Context, who: String?, hits: List<Spell>): List<Spell>? {
-                  if (who != null && who != "莉娜") return null
                   var best: Page? = null
                   var bestN = 0
+                  var tie = false
                   for (pg in loadPages(ctx)) {
+                      if (who != null && pg.who != who) continue
                       val n = pg.spells.count { x -> hits.any { h -> h.key == x.key } }
                       if (n > bestN) {
                           bestN = n
                           best = pg
+                          tie = false
+                      } else if (n == bestN && n > 0) {
+                          tie = true
                       }
                   }
-                  val need = if (who == "莉娜") 2 else 3
-                  return if (best != null && bestN >= need) best.spells else null
+                  if (best == null) return null
+                  // 不知道是哪個角色時,要有 5 個以上吻合而且沒有並列才用
+                  if (who == null && (bestN < 5 || tie)) return null
+                  return if (bestN >= 2) best.spells else null
               }
 
               /** 說明裡的「MP 莉娜10 那加8 …」只留指定角色那一個 */
@@ -2483,14 +2512,14 @@ jobs:
 
                   val pad = dp(8f)
                   val inner = maxOf(1, (w - 2 * pad).toInt())
-                  val minSize = sp(20f)
+                  val minSize = sp(16f)
                   val withOrig = showOrig && orig.isNotEmpty()
 
                   // 右上角留給 ✕ 按鈕,第一塊文字的寬度縮短,才不會被擋到
                   val reserve = dp(30f).toInt()
                   val zhW = if (withOrig) inner else maxOf(1, inner - reserve)
                   val orW = maxOf(1, inner - reserve)
-                  var size = sp(20f)
+                  var size = sp(16f)
                   var layout = makeLayout(textPaint, zh, size, zhW)
                   var oLayout: StaticLayout? = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(10f)), orW) else null
                   while (layout.height + (oLayout?.height ?: 0) + 2 * pad > h && size > minSize) {
@@ -2793,6 +2822,8 @@ jobs:
 
               @Volatile
               private var spellChar: String? = null
+              @Volatile
+              private var spellCharAt = 0L
               private var lastHelpJp = ""
               private var lastHelpZh = ""
               private val SPELL_CHARS = mapOf(
@@ -3235,7 +3266,7 @@ jobs:
               }
 
               // src 是「翻譯範圍」裁切出來的圖,topOffset 是它在整個螢幕上的 y 位置。src 由呼叫的人負責回收。
-              private fun recognizeAndTranslate(src: Bitmap, topOffset: Int, auto: Boolean = false): List<ResultView.Item> {
+              private fun recognizeAndTranslate(src: Bitmap, topOffset: Int, auto: Boolean = false, skipGate: Boolean = false): List<ResultView.Item> {
                   val tStart = SystemClock.uptimeMillis()
                   lastRegion = Rect(0, topOffset, src.width, topOffset + src.height)
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
@@ -3246,18 +3277,28 @@ jobs:
 
                   val spellModeOn = prefs.getBoolean("spell_mode", false)
                   fun runAiv(): List<ResultView.Item> {
+                      // 魔法選單模式會把翻譯範圍往上延伸到畫面最上面,看圖時只送原本設定的範圍,圖小比較快
+                      var img = src
+                      var dy = 0
+                      if (spellModeOn) {
+                          val cut = regionRows(readMetrics()[1])[0] - topOffset
+                          if (cut > 0 && cut < src.height - 40) {
+                              img = Bitmap.createBitmap(src, 0, cut, src.width, src.height - cut)
+                              dy = cut
+                          }
+                      }
                       try {
-                          val s2 = signature(src)
+                          val s2 = signature(img)
                           val ls = lastAivSig
                           val lr = lastAivResult
                           if (ls != null && lr != null && ls.size == s2.size && sigDiff(ls, s2) <= 20) return lr
                           ui.post { setLabel("AI") }
-                          val r = AiClient.translateImage(applicationContext, src, aiHistory.toList())
+                          val r = AiClient.translateImage(applicationContext, img, aiHistory.toList())
                           if (r == null) return emptyList()
                           val zh = Glossary.fix(applicationContext, r.second)
                           rememberAi(zh)
-                          val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                          val res = listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 3), r.first))
+                          val rect = Rect(0, topOffset + dy, src.width, topOffset + src.height)
+                          val res = listOf(ResultView.Item(rect, zh, maxOf(1, img.height / 3), r.first))
                           lastAivSig = s2
                           lastAivResult = res
                           return res
@@ -3267,15 +3308,43 @@ jobs:
                               throw IllegalStateException("AI 額度滿了 (429),請到選單改用線上或離線翻譯")
                           }
                           throw IllegalStateException("AI 看圖失敗:" + msg.take(60) + " (可到選單改用線上或離線翻譯)")
+                      } finally {
+                          if (img !== src) img.recycle()
                       }
                   }
-                  if (engine == "aiv") {
-                      // 魔法選單模式開著時,先用文字辨識找魔法清單和 HELP 說明;不是這兩種畫面再交給 AI 看圖
-                      if (!spellModeOn) return runAiv()
-                      val s0 = signature(src)
-                      val l0 = lastAivSig
-                      val r0 = lastAivResult
-                      if (l0 != null && r0 != null && l0.size == s0.size && sigDiff(l0, s0) <= 20) return r0
+                  if (engine == "aiv" && !spellModeOn) return runAiv()
+                  if (spellModeOn && !skipGate) {
+                      // 魔法選單模式會把範圍延伸到畫面最上面,辨識很慢。先用一次很快的文字辨識看是不是魔法清單 / HELP 說明,
+                      // 不是的話就只處理原本設定的範圍 (對話翻譯速度才不會被拖慢)
+                      var looksMenu = false
+                      try {
+                          val qt = Tasks.await(rec.process(InputImage.fromBitmap(src, 0)), 6, TimeUnit.SECONDS)
+                          val all = qt.text.uppercase()
+                          if (all.contains("PAGE") || all.contains("HELP") || all.contains("えらんで") || all.contains("呪文")) looksMenu = true
+                          if (!looksMenu) {
+                              var n = 0
+                              for (bl in qt.textBlocks) {
+                                  for (ln in bl.lines) {
+                                      if (SpellGuide.match(applicationContext, ln.text) != null) n++
+                                  }
+                              }
+                              if (n >= 1) looksMenu = true
+                          }
+                      } catch (e: Exception) {
+                          looksMenu = false
+                      }
+                      if (!looksMenu) {
+                          if (engine == "aiv") return runAiv()
+                          val cut = regionRows(readMetrics()[1])[0] - topOffset
+                          if (cut > 0 && cut < src.height - 40) {
+                              val c = Bitmap.createBitmap(src, 0, cut, src.width, src.height - cut)
+                              try {
+                                  return recognizeAndTranslate(c, topOffset + cut, auto, true)
+                              } finally {
+                                  c.recycle()
+                              }
+                          }
+                      }
                   }
                   if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst") {
                       try {
@@ -3387,7 +3456,7 @@ jobs:
                       val sp = SpellGuide.match(applicationContext, b.text)
                       if (sp != null) {
                           if (spellHits.none { x -> x.key == sp.key }) spellHits.add(sp)
-                      } else if (SPELL_CHARS[b.text.replace(" ", "").replace("　", "").replace("・", "")] == null) {
+                      } else if (SpellGuide.charOf(b.text) == null) {
                           // 像魔法名稱、但資料裡找不到的,照原文列出來,不要默默漏掉
                           val t = SpellGuide.stripIcon(b.text.replace(" ", "").replace("　", ""))
                           val k = t.count { c -> c in '゠'..'ヿ' }
@@ -3404,37 +3473,32 @@ jobs:
                       var who: String? = null
                       var whoTop = Int.MAX_VALUE
                       for (b in blocks) {
-                          val t = b.text.replace(" ", "").replace("　", "").replace("・", "")
-                          val zhName = SPELL_CHARS[t] ?: continue
+                          val zhName = SpellGuide.charOf(b.text) ?: continue
                           if (b.rect.top < whoTop) {
                               whoTop = b.rect.top
                               who = zhName
                           }
                       }
-                      if (who != null) spellChar = who
-                      val cur = spellChar
+                      val nowMs = SystemClock.uptimeMillis()
+                      if (who != null) {
+                          spellChar = who
+                          spellCharAt = nowMs
+                      }
+                      // 這一幀沒看到角色名稱時,只沿用 8 秒內看到的
+                      val cur = if (nowMs - spellCharAt < 8000) spellChar else null
                       val page = SpellGuide.pageFor(applicationContext, cur, spellHits)
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
                       if (page != null) spellMiss.clear()
                       val zh = listHits.joinToString("\n") { x -> x.name + ":" + (if (cur != null) SpellGuide.forChar(x.info, cur) else x.info) }
-                          .let { z -> if (cur != null) cur + "的魔法\n" + z else z }
                       val zhList = if (spellMiss.isEmpty()) zh else zh + "\n" + spellMiss.joinToString("\n") { m -> m + ":(魔法資料裡找不到)" }
                       val zhAll = if (helpZh != null) "【說明】" + helpZh + "\n\n" + zhList else zhList
                       val res = listOf(ResultView.Item(rect, zhAll, maxOf(1, src.height / 6), "\u0001" + listHits.joinToString(" ") { x -> x.key }))
-                      if (engine == "aiv") {
-                          lastAivSig = signature(src)
-                          lastAivResult = res
-                      }
                       return res
                   }
 
                   if (helpZh != null) {
                       val rect = Rect(0, topOffset, src.width, topOffset + src.height)
                       val res = listOf(ResultView.Item(rect, "【說明】" + helpZh, maxOf(1, src.height / 6), "\u0001" + helpJp))
-                      if (engine == "aiv") {
-                          lastAivSig = signature(src)
-                          lastAivResult = res
-                      }
                       return res
                   }
                   if (engine == "aiv") return runAiv()
@@ -4370,10 +4434,6 @@ jobs:
                   })
                   addRow({ "清除譯文" }, {
                       hideOverlay()
-                  })
-                  addRow({ "停止翻譯服務" }, {
-                      closeMenu()
-                      stopSelf()
                   })
                   addRow({ "關閉選單" }, {
                       closeMenu()
