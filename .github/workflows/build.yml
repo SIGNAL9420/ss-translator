@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "2.2"
+                  versionName = "2.8"
               }
 
               buildTypes {
@@ -640,64 +640,176 @@ jobs:
           97|版權頁
           __SSFILE_EOF__
           cat > 'app/src/main/assets/spells.txt' <<'__SSFILE_EOF__'
-          # 魔法資料。中文名用台灣動畫譯名,括號內是華曜攻略本 p91~94 的名稱。格式: 日文(不含中點)|中文名|說明
-          ディクリアリィ|麗和凈(攻略本:迪克里阿里)|單體・白魔法 / MP 那加6 亞美莉亞8 希菲爾2 / 回復戰鬥不能以外的異常情況
-          ホーリィブレス|凈化結界(攻略本:神聖火焰)|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
-          ホーリーブレス|凈化結界(攻略本:神聖火焰)|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
-          リカバリィ|治癒術(攻略本:恢復)|單體・白魔法 / MP 莉娜5 那加4 傑爾加帝斯7 / 回復(100%)
-          リカバリィB|治癒術B(攻略本:恢復B)|範圍・白魔法 / MP 希菲爾4 / 回復(100%)
+          # 魔法資料,中文名用台灣動畫譯名。格式: 日文(不含中點)|中文名|說明
+          ディクリアリィ|麗和凈|單體・白魔法 / MP 那加6 亞美莉亞8 希菲爾2 / 回復戰鬥不能以外的異常情況
+          ホーリィブレス|凈化結界|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
+          ホーリーブレス|凈化結界|放射・白魔法 / MP 亞美莉亞163 希菲爾178 / 消滅(機率100%) / 攻擊畫面上所有敵人
+          リカバリィ|治癒術|單體・白魔法 / MP 莉娜5 那加4 傑爾加帝斯7 / 回復(100%)
+          リカバリィB|治癒術B|範圍・白魔法 / MP 希菲爾4 / 回復(100%)
           リザレクション|復活|單體・白魔法 / MP 那加8 亞美莉亞12 希菲爾6 / 回復(100%) / 可回復戰鬥不能狀態
           リザレクションF|復活F|單體・白魔法 / MP 希菲爾6 / 回復(100%) / 可回復戰鬥不能狀態
-          ゼラスブリッド|獸王牙操彈(攻略本:抓拉斯布里德)|單體・黑魔法 / MP 莉娜20 那加24 / 氣絕(55%)
-          ダイナストブレス|霸王冰河烈(攻略本:電擊火焰)|單體・黑魔法 / MP 莉娜18 那加28 亞美莉亞40 / 氣絕(77%)
-          ダイナストブレスB|霸王冰河烈B(攻略本:電擊火焰B)|範圍・黑魔法 / MP 莉娜36 / 氣絕(85%)
-          ダイナストブレスS|霸王冰河烈S(攻略本:電擊火焰S)|直線・黑魔法 / MP 莉娜32 / 氣絕(86%)
-          ドラグスレイブ|龍破斬(攻略本:德拉格斯雷布)|大範圍・黑魔法 / MP 莉娜48 希菲爾80 / 氣絕(100%) / 莉娜最得意的黑魔法,從開始到結束都會用到)
-          ドラグスレイブC|龍破斬C(攻略本:德拉格斯雷布C)|單體・黑魔法 / MP 莉娜40 希菲爾85 / 氣絕(100%)
-          ドラグスレイブF|龍破斬F(攻略本:德拉格斯雷布F)|大範圍・黑魔法 / MP 莉娜60 / 氣絕(100%)
-          ブラストアッシュ|黑妖陣(攻略本:火炎灰燼)|直線・黑魔法 / MP 莉娜8 那加12 / 氣絕(100%) / 給予999的傷害
-          ラグナブレード|神滅斬(攻略本:拉格那之劍)|單體・黑魔法 / MP 莉娜80 / (0%) / 給予999的傷害
-          アストラルヴァイン|魔皇靈斬(攻略本:阿斯特拉法印)|單體 / MP 傑爾加帝斯8
-          ヴィスファランク|靈王結魔彈(攻略本:維斯法蘭克)|單體 / MP 亞美莉亞8
-          エルメキアランス|烈閃槍(攻略本:艾爾梅加之槍)|單體 / MP 莉娜12 那加10 傑爾加帝斯13 / 氣絕(35%) / 雖是精靈魔法但對魔族也有效
-          ゴズヴロー|冥壞屍(攻略本:葛滋布羅)|單體 / MP 莉娜20 那加28 傑爾加帝斯37 / 氣絕(60%)
-          スリーピング|睡眠術(攻略本:睡眠)|單體 / MP 莉娜10 那加10 / 睡(90%)
+          ゼラスブリッド|獸王牙操彈|單體・黑魔法 / MP 莉娜20 那加24 / 氣絕(55%)
+          ダイナストブレス|霸王冰河烈|單體・黑魔法 / MP 莉娜18 那加28 亞美莉亞40 / 氣絕(77%)
+          ダイナストブレスB|霸王冰河烈B|範圍・黑魔法 / MP 莉娜36 / 氣絕(85%)
+          ダイナストブレスS|霸王冰河烈S|直線・黑魔法 / MP 莉娜32 / 氣絕(86%)
+          ドラグスレイブ|龍破斬|大範圍・黑魔法 / MP 莉娜48 希菲爾80 / 氣絕(100%) / 莉娜最得意的黑魔法,從開始到結束都會用到)
+          ドラグスレイブC|龍破斬C|單體・黑魔法 / MP 莉娜40 希菲爾85 / 氣絕(100%)
+          ドラグスレイブF|龍破斬F|大範圍・黑魔法 / MP 莉娜60 / 氣絕(100%)
+          ブラストアッシュ|黑妖陣|直線・黑魔法 / MP 莉娜8 那加12 / 氣絕(100%) / 給予999的傷害
+          ラグナブレード|神滅斬|單體・黑魔法 / MP 莉娜80 / (0%) / 給予999的傷害
+          アストラルヴァイン|魔皇靈斬|單體 / MP 傑爾加帝斯8
+          ヴィスファランク|靈王結魔彈|單體 / MP 亞美莉亞8
+          エルメキアランス|烈閃槍|單體 / MP 莉娜12 那加10 傑爾加帝斯13 / 氣絕(35%) / 雖是精靈魔法但對魔族也有效
+          ゴズヴロー|冥壞屍|單體 / MP 莉娜20 那加28 傑爾加帝斯37 / 氣絕(60%)
+          スリーピング|睡眠術|單體 / MP 莉娜10 那加10 / 睡(90%)
           スリーピングN|睡眠N|放射 / MP 那加10 / 睡(100%) / 術者本身也會受到影響
-          ブラムブレイザー|青魔烈彈波(攻略本:布拉姆布雷薩)|單體 / MP 莉娜17 那加14 傑爾加帝斯18 / 氣絕(40%)
-          ラティルト|崩靈裂(攻略本:拉提爾特)|單體 / MP 傑爾加帝斯48 亞美莉亞48 / 氣絕(75%)
-          ラティルトB|崩靈裂B(攻略本:拉提爾特B)|範圍 / MP 傑爾加帝斯78 亞美莉亞72 / 氣絕(85%)
-          ダムブラス|振動彈(攻略本:火焰撞擊)|單體・火系 / MP 莉娜12 那加16 傑爾加帝斯13 / 氣絕(10%)
-          ダムブラスB|振動彈B(攻略本:火焰撞擊B)|範圍・火系 / MP 傑爾加帝斯13 / 氣絕(28%)
-          バーストフレア|烈火球(攻略本:爆裂核融術)|範圍・火系 / MP 莉娜22 那加22 傑爾加帝斯28 / 氣絕(15%)
-          バーストロント|爆煙舞(攻略本:爆裂特偶)|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
-          バーストロンド|爆煙舞(攻略本:爆裂特偶)|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
-          ファイアーボール|火炎球(攻略本:火球)|範圍・火系 / MP 莉娜20 那加19 傑爾加帝斯25 / 氣絕(33%)
+          ブラムブレイザー|青魔烈彈波|單體 / MP 莉娜17 那加14 傑爾加帝斯18 / 氣絕(40%)
+          ラティルト|崩靈裂|單體 / MP 傑爾加帝斯48 亞美莉亞48 / 氣絕(75%)
+          ラティルトB|崩靈裂B|範圍 / MP 傑爾加帝斯78 亞美莉亞72 / 氣絕(85%)
+          ダムブラス|振動彈|單體・火系 / MP 莉娜12 那加16 傑爾加帝斯13 / 氣絕(10%)
+          ダムブラスB|振動彈B|範圍・火系 / MP 傑爾加帝斯13 / 氣絕(28%)
+          バーストフレア|烈火球|範圍・火系 / MP 莉娜22 那加22 傑爾加帝斯28 / 氣絕(15%)
+          バーストロント|爆煙舞|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
+          バーストロンド|爆煙舞|單體・火系 / MP 莉娜6 那加8 亞美莉亞8 / 氣絕(25%)
+          ファイアーボール|火炎球|範圍・火系 / MP 莉娜20 那加19 傑爾加帝斯25 / 氣絕(33%)
           ファイアーボール※|火球※|範圍・火系 / MP 亞美莉亞24 / 氣絕(50%)
-          ブラストボム|暴爆咒(攻略本:爆烈火藥)|範圍・火系 / MP 莉娜26 那加28 / 氣絕(46%)
-          フレアアロー|炎之矢(攻略本:核融箭)|單體・火系 / MP 莉娜8 那加9 傑爾加帝斯9 / 氣絕(35%)
-          フレアアローN|炎之矢N(攻略本:核融箭N)|三線(印3)・火系 / MP 那加7 / 氣絕(45%)
-          フレアランス|炎之槍(攻略本:核融槍)|直線・火系 / MP 莉娜10 那加13 傑爾加帝斯14 / 氣絕(25%)
+          ブラストボム|暴爆咒|範圍・火系 / MP 莉娜26 那加28 / 氣絕(46%)
+          フレアアロー|炎之矢|單體・火系 / MP 莉娜8 那加9 傑爾加帝斯9 / 氣絕(35%)
+          フレアアローN|炎之矢N|三線(印3)・火系 / MP 那加7 / 氣絕(45%)
+          フレアランス|炎之槍|直線・火系 / MP 莉娜10 那加13 傑爾加帝斯14 / 氣絕(25%)
           ボムスブリッド|火藥斯布里德|範圍・火系 / MP 莉娜8 那加9 亞美莉亞10
           ボムスブリッドB|火藥斯布里德B|範圍・火系 / MP 莉娜8 那加8 亞美莉亞13
-          アイシクルランス|冰之槍(攻略本:冰凍之槍)|直線・冰系 / MP 莉娜10 那加14 傑爾加帝斯16 / 凍結(80%)
-          デモナクリスタル|靈冰陣(攻略本:黛默那水晶)|單體・冰系 / MP 莉娜24 那加26 亞美莉亞27 / 凍結(64%)
-          フリーズアロー|冰之矢(攻略本:冷凍箭)|單體・冰系 / MP 莉娜7 那加10 傑爾加帝斯10 / 氣絕(16%)
-          フリーズアローN|冰之矢N(攻略本:冷凍箭N)|三線(印3)・冰系 / MP 那加9 / 氣絕(45%)
+          アイシクルランス|冰之槍|直線・冰系 / MP 莉娜10 那加14 傑爾加帝斯16 / 凍結(80%)
+          デモナクリスタル|靈冰陣|單體・冰系 / MP 莉娜24 那加26 亞美莉亞27 / 凍結(64%)
+          フリーズアロー|冰之矢|單體・冰系 / MP 莉娜7 那加10 傑爾加帝斯10 / 氣絕(16%)
+          フリーズアローN|冰之矢N|三線(印3)・冰系 / MP 那加9 / 氣絕(45%)
           フリーズブリッド|冷凍布里德|單體・冰系 / MP 莉娜6 那加8 傑爾加帝斯11
           ダグハウト|達格豪特|放射・地系 / MP 莉娜11 那加13 傑爾加帝斯17
           ダグハウトB|達格豪特B|範圍・地系 / MP 莉娜18 傑爾加帝斯24 / 氣絕(機率?)
-          ディルブランド|炸彈陣(攻略本:迪爾布藍德)|放射・地系 / MP 莉娜6 那加8 傑爾加帝斯9 / 氣絕(74%)
-          ディルブランドB|炸彈陣B(攻略本:迪爾布藍德B)|範圍・地系 / MP 莉娜8 傑爾加帝斯11 亞美莉亞10 / 氣絕(65%)
+          ディルブランド|炸彈陣|放射・地系 / MP 莉娜6 那加8 傑爾加帝斯9 / 氣絕(74%)
+          ディルブランドB|炸彈陣B|範圍・地系 / MP 莉娜8 傑爾加帝斯11 亞美莉亞10 / 氣絕(65%)
           メガブランド|超級布藍德|直線・地系 / MP 莉娜14 那加11 傑爾加帝斯14 / 氣絕(24%)
           エアロボム|飛行炸彈|範圍・風系 / MP 莉娜21 那加17 傑爾加帝斯15 / 氣絕(20%)
-          ディムウィン|魔風(攻略本:迪姆之風)|放射・風系 / MP 莉娜10 那加8 傑爾加帝斯8 / 氣絕(100%) / 捲走範圍內的敵方或我方
-          ディムウィンC|魔風C(攻略本:迪姆之風C)|單體・風系 / MP 傑爾加帝斯8 / 氣絕(100%) / 捲走指定的角色
-          ディムウィンS|魔風S(攻略本:迪姆之風S)|直線・風系 / MP 傑爾加帝斯8 亞美莉亞8 / 氣絕(100%) / 捲走範圍內的敵方
+          ディムウィン|魔風|放射・風系 / MP 莉娜10 那加8 傑爾加帝斯8 / 氣絕(100%) / 捲走範圍內的敵方或我方
+          ディムウィンC|魔風C|單體・風系 / MP 傑爾加帝斯8 / 氣絕(100%) / 捲走指定的角色
+          ディムウィンS|魔風S|直線・風系 / MP 傑爾加帝斯8 亞美莉亞8 / 氣絕(100%) / 捲走範圍內的敵方
           ブラムガッシュ|布拉姆加殊|直線・風系 / MP 莉娜9 那加10 傑爾加帝斯11 / 氣絕(20%)
           ブラムファング|布拉姆之牙|單體・風系 / MP 莉娜8 那加16 傑爾加帝斯26 / 氣絕(50%)
-          ディグボルト|雷擊破(攻略本:迪克電擊)|單體・風系 / MP 莉娜20 那加18 / 麻痺(80%)
+          ディグボルト|雷擊破|單體・風系 / MP 莉娜20 那加18 / 麻痺(80%)
           モノヴォルト|莫娜電擊|單體・風系 / MP 莉娜13 那加14 / 麻痺(72%)
           ギガスレイブ|重破斬|黑魔法 咒文中威力最強 (AA級),失敗會被黑暗吞噬,副作用多
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/walkthrough.txt' <<'__SSFILE_EOF__'
+          C|1|千鈞一髮!救援小精靈的少年!|29
+          S|1|1|湖水樹林 定食屋|29|從湖水樹林的定食屋開始。白蛇娜卡在此出場,與右邊位子的男士交談可去城鎮盡頭。
+          S|1|2|湖水樹林 定食屋|29|叫餐可提升莉娜衝勁:吃飽肚子的量銀幣5個,一般量銅幣7個。
+          S|1|3|湖水樹林|29|此城會出現遊戲中只有湖水樹林才有的貴重「焦點」道具。
+          S|1|4|城鎮盡頭|30|B 與魔族初次作戰:惡魔R HP185/MP200,會炎之矢系。FIELD TYPE C,用魔法應戰。
+          S|1|5|大道|30|C 確認旅館的所在。從大道可出城前往固蘭斯特、馬克威魯斯。
+          S|1|6|旅館|31|D 休息:休息到天黑或休息到早上都是銀幣6個。休息到天黑後可去酒館。
+          S|1|7|酒館|31|E 與酒館老闆聊4次後會與流氓打鬥:小囉嘍HP155/MP0,FIELD TYPE A。
+          S|1|8|酒館|31|打倒流氓可得10金幣。點餐:吃飽肚子的量金幣1個,一般量銀幣1個。
+          S|1|9|巴克藍德東面的森林|32|F 小精靈少年的危機:敵人有惡魔R(HP185/MP200)、魔斯人(HP1400/MP0)。
+          S|1|10|巴克藍德東面的森林|32|莉娜用魔法龍破斬應戰(攻略本音譯為「德拉格斯雷布」)。
+          S|1|11|巴克藍德東面的森林|32|與被魔族襲擊的拉克會合,FIELD TYPE D。拉克成為夥伴,向巴克藍德出發(第2章)。
+          C|2|一攫千金?探索首飾之謎!|33
+          S|2|1|巴克藍德館|34|從巴克藍德村的巴克藍德館開始。A 聽拉克說明首飾與列薩連姆傳說有關,休息銀幣12枚。
+          S|2|2|巴克藍德館|34|得到旅館券一張,要在裘撒克的市集使用(攻略本字不全)。第2天早上娜卡不見了。
+          S|2|3|巴克藍德西邊的森林|34|B 娜卡成為敵人,FIELD TYPE D。娜卡HP200/MP200,會睡眠術等,戰後掉落199枚金幣。
+          S|2|4|巴克藍德西邊的森林|34|莉娜可用神滅斬攻擊;另有魔斯人、R惡魔(HP185/MP200)。戰後與莉娜對話,娜卡逃走。
+          S|2|5|固蘭斯特 東邊|35|C 神秘的敵人來襲:刺客HP170/MP55、魔導士HP130/MP155、戰士頭目HP185/MP0。
+          S|2|6|固蘭斯特 長者的家|35|D 魔族來到村裡:左特HP1300/MP500、R惡魔HP185/MP200。向長者拿妖精的魔法劍。
+          S|2|7|固蘭斯特 山的洞穴|36|E 洞穴戰鬥①:FIELD TYPE B,反擊設逃跑,用AI。不破壞牆壁得1000金幣,破壞只得3枚。
+          S|2|8|固蘭斯特 山的洞穴|38|戰鬥②③④同樣設定,④先消滅左下角敵人。⑤⑥⑦莉娜和拉克逃跑,高里反擊。
+          S|2|9|固蘭斯特 山的洞穴|39|盜賊團決戰:洞穴內FIELD TYPE B,洞穴外FIELD TYPE D,用龍破斬。盜賊HP145,頭目HP160。
+          S|2|10|固蘭斯特 離開城鎮|40|F 離開村鎮要選內街或外街,目的地是索尼亞城的魔導士協會。內街通H,外街通G。
+          S|2|11|固蘭斯特南邊森林(外街道)|40|G 魔族埋伏:R惡魔HP185/MP200、愛咪莉亞HP1200/MP450、左特HP1300/MP500。
+          S|2|12|固蘭斯特南邊森林(內街道)|41|H 同樣有埋伏。傑路剛帝士登場成為夥伴,會崩靈裂、冥壞屍。選內街道可得高貴的雕像。網路攻略也寫:選南邊裏街道,傑路剛帝士才會加入。
+          S|2|13|索尼亞城北方|42|I 擊退盜賊團取寶藏:莉娜用烈閃槍和炸彈陣攻擊。盜賊HP145,頭目HP160。
+          S|2|14|索尼亞城北方|42|徽章藍色給莉娜,其餘給高里。虐待盜賊團可得雕像,之後往索尼亞城(第3章)。
+          C|3|全體集合!|43
+          S|3|1|索尼亞城 旅館|44|從索尼亞城旅館開始。A 說出去列薩連姆的理由後,與傑路剛帝士暫時分手。休息銀幣16枚。
+          S|3|2|索尼亞城 武器屋|44|B 輕劍48金幣、護腕盾117金幣、胸部護甲90金幣。攻略本說等到屠魯城(圖爾城)再買;網路攻略:屠魯城道具屋有高里最強武器,要2710金幣。
+          S|3|3|索尼亞城 教會、神殿|44|C 教會聽神官的煩惱。D 把第2章的高貴雕像放回神殿,會連續戰鬥。
+          S|3|4|索尼亞城 神殿|45|①FIELD TYPE C、②FIELD TYPE A。僵屍HP135/MP0、鬼魂HP22/MP240,物理無效改用魔法;②可令高里逃跑。
+          S|3|5|索尼亞城 神殿|46|③FIELD TYPE A,影子HP100/MP0,莉娜用青魔烈彈波。④FIELD TYPE C可用強力魔法。拉克用烈閃槍擊倒鬼魂。
+          S|3|6|索尼亞城 廣場|47|E 到處打聽。道具屋女主人美亞莉告知魔導士協會位置並委託碼頭任務。
+          S|3|7|索尼亞城 魔導士協會|47|F 抵達後找到與首飾相關的書。高里大發脾氣,拉克把書帶出。
+          S|3|8|索尼亞城 碼頭|48|G 破壞盜賊團倉庫:FIELD TYPE C,盜賊HP145、頭目HP160。要拿徽章須先中止AI。
+          S|3|9|索尼亞城 碼頭|48|任務獎勵是胸部變大的藥(實為肌肉增大):給拉克增防禦忍耐,給高里增攻擊。
+          S|3|10|索尼亞城 旅館|49|H 旅館用餐時遭愛咪莉亞襲擊,頑皮公主阿梅莉雅加入成為夥伴。
+          S|3|11|索尼亞城 旅館|49|愛咪莉亞HP1200/MP450,有飛彈、炸彈、冰凍系攻擊;惡魔R/B HP185/200。用龍破斬C。
+          S|3|12|索尼亞城 酒館|49|傑路剛帝士與阿梅莉雅用崩靈裂B。戰後在酒館稍作休息,點餐可提升能力。
+          S|3|13|索尼亞城 道具屋|50|I 道具屋終於開店,美亞莉給的護身符可提升防禦力。
+          S|3|14|巴克藍德南方的森林|50|J 遭盜賊襲擊,獲800枚金幣。為取得畫的原書前往賽倫,接第4章。
+          C|4|順風滿帆?|51
+          S|4|1|巴克藍德|51|從巴克藍德出發,往賽倫調查列薩連姆傳說。A 旅館、酒館、武器屋、道具屋有商店情報。
+          S|4|2|巴克藍德 商店|52|商店裝備有白色法衣、星之護手、護腕、皮盔等(部分字小看不清)。
+          S|4|3|馬克威魯斯|52|B 往拉克的故鄉,廣場發生戰鬥:小丑HP200/MP200(魔力彈)、R/B惡魔HP185/200。
+          S|4|4|伊哲魯斯 奇怪的旅館|53|C 深夜惡靈騷動:戰鬥①莉娜與阿梅莉雅、②傑路剛帝士與拉克。鬼魂HP22/MP240。
+          S|4|5|伊哲魯斯 奇怪的旅館|53|凈化結界對鬼魂有效。建議用詠唱較短的烈閃槍,並在戰鬥中收集徽章。
+          S|4|6|伊哲魯斯 奇怪的旅館|54|戰鬥③FIELD TYPE C:鬼魂、影子HP100/MP0、神官HP140/MP0,犯人是城裡的神官。
+          S|4|7|伊哲魯斯 奇怪的旅館|54|抓到犯人(神官)後,和旅館主人談話:莉娜衝勁上升,獲得30枚金幣、旅館券5張。若一開始拒絕幫忙找犯人,只會拿到旅館券5張和1枚金幣。
+          S|4|8|伊哲魯斯 旅館|55|D 住宿25枚銀幣。網路攻略補充:在廣場跟女性談話2次以上,就不能住這間旅館了,要住的話別再跟她講話。
+          S|4|9|伊哲魯斯 酒場、道具屋|55|E 只有道具屋,沒有武器屋。
+          S|4|10|伊哲魯斯|55|高貴之像可在索尼亞賣掉換2000枚金幣,賣掉似乎比較合算。
+          S|4|11|伊哲魯斯北邊的森林|56|F 與第4位魔族左特決鬥:左特HP2000/MP720,另有R/B惡魔HP185/215(炎之矢系)。
+          S|4|12|伊哲魯斯北邊的森林|56|開戰先用龍破斬。阿梅莉雅、傑路剛帝士用靈王結魔彈;傑路剛帝士用魔皇靈斬(アストラル・ヴァイン,把魔力注入劍裡的魔法)。
+          S|4|13|伊哲魯斯北邊的森林|56|最後對左特用神滅斬。左特被擊倒後,攻略本接著談霍克的下落與列薩連姆之謎。
+          C|5|豬突猛進!奪回被搶奪的首飾!|57
+          S|5|1|塞隆國境|58|從塞隆國境開始:首飾被奪走,拉克追著加列夫,高里、傑路剛帝士加入,3人迎戰。
+          S|5|2|塞隆國境|58|打R・惡魔(HP185/MP120,用炎之矢),只有1隻,設AI即可。FIELD TYPE D。戰後要選去自由之地或伊哲魯斯才能追加列夫。
+          S|5|3|伊哲魯斯 奇怪的旅館|58|B:問奇怪旅館的女主人,她說加列夫似乎往塞隆方向去。
+          S|5|4|伊哲魯斯 北邊的森林|59|C:往塞隆國境途中走內部街道會遇半人魚(HP100/MP0),先設好AI,也可手動用龍破斬。
+          S|5|5|塞隆國境|59|D:撞見逃向自由之地的加列夫,R・惡魔(HP185/MP200)與戰士頭目在場,阿梅莉雅已入隊。
+          S|5|6|自由之地 基本路線|60|E:城裡遭賞金獵人襲擊,FIELD TYPE C,龍破斬F不能用。羅嘍155、戰士175、頭目185,戰後回收徽章。
+          S|5|7|自由之地 市場、廣場、城郊|61|F:三處任選一處都會戰鬥,三處都要去。市場地形縱長,用直線攻擊魔法;廣場敵人密集,用範圍大的魔法。
+          S|5|8|自由之地 城郊|62|城郊地形廣闊,不怕被包圍,用AI即可;廣場用範圍魔法時小心別波及同伴。
+          S|5|9|自由之地 市場、廣場、城郊|63|三處戰士戰完再去剩下的地點,會遇魔導士(HP130/MP155);廣場用霸王冰河烈S殺出一條路。
+          S|5|10|自由之地 城郊|64|魔導士戰在城郊用AI即可。AI可手動切換,反擊設定有逃跑、打回去、迴避、大笑。
+          S|5|11|自由之地 村長的家|65|G:村長說加列夫租房子住在這裡;阿梅莉雅懷疑村長是共犯。道具屋與巴克藍德一樣,等到裘撒克再買。
+          S|5|12|裘撒克 西|66|I:賞金獵人戰士埋伏,用霸王冰河烈S。反擊設定:莉娜、拉克逃跑,阿梅莉雅迴避,高里、傑路剛帝士打回去。
+          S|5|13|裘撒克 西|66|戰後得知加列夫的藏匿處在裘撒克北方森林,前往第6章。
+          C|6|討伐壞人?阻止加列夫征服世界!|67
+          S|6|1|裘撒克|67|從裘撒克大街開始,依序是廣場、攤位、離開城鎮,再進北方森林。
+          S|6|2|裘撒克 廣場|68|A:市場沒開的日子來廣場會再戰魔導士;日期末數是0或5的開市日不會有戰鬥。
+          S|6|3|裘撒克 廣場|68|敵人羅嘍155、戰士頭目175、魔導士HP130/MP155。分散隊型,用詠唱短的單發魔法如烈閃槍;莉娜被包圍時用達格豪特。
+          S|6|4|裘撒克 攤位|68|B:日期末數0和5有集市,攤位1是吃角子老虎,攤位2是騎士與怪物,都用旅館券玩。
+          S|6|5|裘撒克 旅館、酒館|69|C:城裡有兩家旅館、兩家酒館。一直住宿會有好事:城鎮南邊旅館店主(看似不和善)會給50張旅館券。
+          S|6|6|裘撒克 武器屋、道具屋|69|阿梅莉雅可裝備星之魔術(攻略本字跡不清),537枚金幣;另有水晶絲衣服、披風。網路補充:道具屋賣最高級防具;市集老虎機在日期尾數0、5的日子出現,轉出莉娜或娜卡可得強力武器。
+          S|6|7|裘撒克 北邊森林湖畔|70|D:與魔導士決戰。開戰後中止莉娜AI,往上方移動再用龍破斬。羅嘍155、戰士175、魔導士130。
+          S|6|8|裘撒克 岔路|70|E:往左直達加列夫的窩藏處,速度快;往右進老舊洋房並戰鬥。
+          S|6|9|老舊洋房 大廳|71|F:魔導士研究所,有小丑(HP200/MP200,殺系)與守衛者(HP165/MP125)。大廳FIELD TYPE A,用青魔烈彈波。
+          S|6|10|老舊洋房 餐廳|72|餐廳戰鬥要先集合所有人移到右邊;二樓客房沒東西,回大廳。
+          S|6|11|老舊洋房 中庭、後門|73|中庭幾乎所有魔法都能用,輕鬆戰鬥。後門通往加列夫的窩藏處,可多拿徽章。
+          S|6|12|加列夫的窩藏處|74|G:R・惡魔(HP185/MP200)與加列夫(HP160/MP160,用炎之矢)。莉娜用兩發龍破斬摧毀敵軍,高里回收徽章。
+          S|6|13|加列夫的窩藏處|74|戰勝後奪回首飾,加列夫不知道項鍊的秘密;一行前往聖都賽倫,進入第7章。
+          C|7|魔王召喚?揭開魔族的企圖!|75
+          S|7|1|聖都賽倫 大街|75|從聖都賽倫大街開始,為解開首飾的秘密行動;路線是賽倫、拉魯帝克國境、撒布魯克、屠魯城。
+          S|7|2|聖都賽倫 大街|76|A:結界內戰鬥,先用龍破斬開場,戰後收回徽章。敵人有B・惡魔HP220~223、D・野獸、守衛者HP207/MP125。
+          S|7|3|聖都賽倫 旅舍|76|B:聽希爾菲兒推測魔族想召喚過去的魔王夏布拉尼古德。住一晚(3枚金幣),隔天往列薩連姆出發。
+          S|7|4|聖都賽倫 酒館、武器店、道具屋|77|C:最強武器在最後的城市屠魯城買,先存錢。住旅舍後去大街,希爾菲兒表情凝重,向拉克借首飾(與烈札安有關)。
+          S|7|5|拉魯帝克王國 國境|78|D:賞金戰士再挑戰,先用龍破斬。羅嘍155、戰士175、頭目185;戰後取衣物得130枚,交官員得50枚。
+          S|7|6|撒布魯克|79|E:沒什麼大事件,盡快離開;價格單位是銀幣。旅舍有希爾菲兒說出煩惱的對話事件。
+          S|7|7|屠魯城|79|F:伊哲魯斯的色狼神官再現身,先用龍破斬;阿梅莉雅用凈化結界擊倒鬼魂,戰後得300枚。
+          S|7|8|屠魯城 地下水道|80|G:大街去後街必須過地下水道,半魚人(HP100/MP0)阻擋,往返都會戰鬥。戰鬥①設委託型AI,收回徽章。
+          S|7|9|屠魯城 地下水道|81|戰鬥②有木桶擋路,要破壞木桶才能開路,可用霸王冰河烈S。
+          S|7|10|屠魯城 道具店|81|H:前往列薩連姆前再次購物。推薦攻擊力高的艾爾梅加劍,另有達人劍。
+          S|7|11|屠魯城 旅舍、酒館|82|I:離開城鎮後只剩列薩連姆,住旅舍會有決戰前的對話事件;酒館吃飯糰1枚金幣。
+          S|7|12|屠魯城 北方|82|J:固蘭斯特山洞外與盜賊團戰鬥。先中止莉娜AI,龍破斬往下方打。盜賊145、頭目160,戰後得550枚。
+          S|7|13|列薩連姆|82|離開屠魯城後,前往決戰之地列薩連姆,進入第8章。
+          C|8|阻止夏布拉尼古德的召喚吧?!|83
+          S|8|1|列薩連姆 入口|83|從列薩連姆入口開始,依序是入口、本城通路,再去寶物庫或大廳。
+          S|8|2|列薩連姆 入口|84|A:與第四人魔族霍克戰鬥。霍克HP2000/MP650,特殊攻擊有飛彈、死亡、炸彈、冰凍系。
+          S|8|3|列薩連姆 入口|84|中止AI,拉克反擊設為逃跑,希爾菲兒移向右方,莉娜與希爾菲兒用龍破斬。另有B・惡魔2(HP215)、D・野獸2(HP200)。
+          S|8|4|本城通路|84|B:通道後要選往右(大廳)或往左(寶物庫),會影響上場成員和迪翁強弱。右邊:莉娜、娜卡、拉克;左邊:莉娜、拉克。
+          S|8|5|列薩連姆 寶物庫|85|C:莉娜與拉克兩人戰鬥,拉克逃跑,莉娜用青魔烈彈波,拉克用烈閃槍。敵人R・惡魔HP185/200,用炎之矢。
+          S|8|6|列薩連姆 寶物庫|85|戰後回通道,與高里、傑路剛帝士、阿梅莉雅、希爾菲兒會合,前往大廳。
+          S|8|7|列薩連姆 大廳|86|D:往右走的戰鬥。先用龍破斬,再用神滅斬一口氣解決。迪翁1 HP2000/MP800,特殊攻擊有電波、飛彈、擊殺、死亡、炸彈系。
+          S|8|8|列薩連姆 大廳|86|打倒迪翁後列薩連姆崩潰,莉娜等人白跑一趟;娜卡搾取妖精長老的錢,拉克前往固蘭斯特。
+          S|8|9|列薩連姆 大廳|87|E:從寶物庫來大廳(往左)。迪翁2 HP2400/MP1300;高里負責迪翁本身,莉娜與希爾菲兒用龍破斬。
+          S|8|10|列薩連姆 大廳|87|圖說提到對付迪翁,除了神滅斬,也可用崩靈裂。
+          S|8|11|列薩連姆 大廳|87|打倒迪翁後列薩連姆崩塌,寶物掉進海裡,最後只得到首飾;拉克暗自高興能與莉娜等人分開。
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/AiClient.kt' <<'__SSFILE_EOF__'
           package com.example.sstranslator
@@ -1434,7 +1546,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v2.2 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v2.8 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2197,6 +2309,21 @@ jobs:
                   }
                   return if (bestScore >= 0.6f) best else null
               }
+
+              /** 說明裡的「MP 莉娜10 那加8 …」只留指定角色那一個 */
+              fun forChar(info: String, who: String): String {
+                  val parts = info.split(" / ")
+                  val out = ArrayList<String>()
+                  for (p in parts) {
+                      if (p.startsWith("MP ")) {
+                          val m = Regex(Regex.escape(who) + "([0-9]+)").find(p)
+                          out.add(if (m != null) "MP " + m.groupValues[1] else "(攻略沒有" + who + "的 MP 資料)")
+                      } else {
+                          out.add(p)
+                      }
+                  }
+                  return out.joinToString(" / ")
+              }
           }
           __SSFILE_EOF__
           cat > 'app/src/main/java/com/example/sstranslator/SubtitleView.kt' <<'__SSFILE_EOF__'
@@ -2221,7 +2348,18 @@ jobs:
            */
           class SubtitleView(context: Context) : View(context) {
 
+              // 內容比框高時,手指在框內上下滑動就能看前後文;新的譯文進來會自動捲到最底
               var zh: String = ""
+                  set(v) {
+                      if (field != v) {
+                          field = v
+                          if (System.currentTimeMillis() - lastTouch > 4000) autoBottom = true
+                      }
+                  }
+              private var sc = 0f
+              private var maxSc = 0f
+              private var autoBottom = true
+              private var lastTouch = 0L
               var orig: String = ""
               var showOrig: Boolean = true
 
@@ -2275,7 +2413,7 @@ jobs:
 
                   val pad = dp(8f)
                   val inner = maxOf(1, (w - 2 * pad).toInt())
-                  val minSize = sp(10f)
+                  val minSize = sp(18f)
                   val withOrig = showOrig && orig.isNotEmpty()
 
                   // 右上角留給 ✕ 按鈕,第一塊文字的寬度縮短,才不會被擋到
@@ -2284,22 +2422,41 @@ jobs:
                   val orW = maxOf(1, inner - reserve)
                   var size = sp(26f)
                   var layout = makeLayout(textPaint, zh, size, zhW)
-                  var oLayout: StaticLayout? = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(9f)), orW) else null
+                  var oLayout: StaticLayout? = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(10f)), orW) else null
                   while (layout.height + (oLayout?.height ?: 0) + 2 * pad > h && size > minSize) {
                       size -= 1f
                       layout = makeLayout(textPaint, zh, size, zhW)
-                      oLayout = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(9f)), orW) else null
+                      oLayout = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(10f)), orW) else null
                   }
 
                   val ol = oLayout
+                  val oh = (ol?.height ?: 0).toFloat()
+                  val viewH = h - 2 * pad - oh
+                  maxSc = maxOf(0f, layout.height - viewH)
+                  if (autoBottom) {
+                      sc = maxSc
+                      autoBottom = false
+                  }
+                  sc = sc.coerceIn(0f, maxSc)
+
                   canvas.save()
                   canvas.translate(pad, pad)
-                  if (ol != null) {
-                      ol.draw(canvas)
-                      canvas.translate(0f, ol.height.toFloat())
-                  }
+                  if (ol != null) ol.draw(canvas)
+                  canvas.save()
+                  canvas.clipRect(0f, oh, inner.toFloat(), oh + viewH)
+                  canvas.translate(0f, oh - sc)
                   layout.draw(canvas)
                   canvas.restore()
+                  canvas.restore()
+
+                  if (maxSc > 0f) {
+                      // 右側的捲動條
+                      val trackTop = pad + oh
+                      val trackH = viewH
+                      val barH = maxOf(dp(16f), trackH * viewH / layout.height)
+                      val barY = trackTop + (trackH - barH) * (sc / maxSc)
+                      canvas.drawRoundRect(RectF(w - dp(5f), barY, w - dp(2f), barY + barH), dp(2f), dp(2f), handlePaint)
+                  }
 
                   // 右上角的關閉按鈕
                   val cr = dp(10f)
@@ -2328,9 +2485,12 @@ jobs:
                               2
                           } else if (e.x > width - hs && e.y < hs) {
                               3
+                          } else if (maxSc > 0f && e.y > dp(28f)) {
+                              4
                           } else {
                               1
                           }
+                          lastTouch = System.currentTimeMillis()
                           lastX = e.rawX
                           lastY = e.rawY
                           return true
@@ -2344,6 +2504,10 @@ jobs:
                               onMove?.invoke(dx, dy)
                           } else if (mode == 2) {
                               onResize?.invoke(dx, dy)
+                          } else if (mode == 4) {
+                              sc = (sc - dy).coerceIn(0f, maxSc)
+                              lastTouch = System.currentTimeMillis()
+                              invalidate()
                           }
                           return true
                       }
@@ -2520,6 +2684,12 @@ jobs:
           import android.view.View
           import android.view.WindowManager
           import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.text.SpannableStringBuilder
+          import android.text.Spanned
+          import android.text.style.ForegroundColorSpan
+          import android.text.style.StyleSpan
+          import android.graphics.Typeface
           import android.widget.TextView
           import android.widget.Toast
           import com.google.android.gms.tasks.Tasks
@@ -2550,6 +2720,14 @@ jobs:
                   private const val NOTIF_ID = 1
                   private val JP = Regex("[\\u3040-\\u30FF\\u4E00-\\u9FFF]")
               }
+
+              @Volatile
+              private var spellChar: String? = null
+              private val SPELL_CHARS = mapOf(
+                  "リナ" to "莉娜", "ナーガ" to "那加", "アメリア" to "亞美莉亞",
+                  "ゼルガディス" to "傑爾加帝斯", "ゼル" to "傑爾加帝斯", "シルフィール" to "希菲爾",
+                  "ガウリイ" to "高里"
+              )
 
               private class Blk(val rect: Rect, var text: String, val lineH: Int)
 
@@ -3086,15 +3264,38 @@ jobs:
 
                   // 魔法選單:辨識到魔法名稱就顯示中文名、範圍、消耗 MP 和效果,不去翻譯
                   val spellHits = ArrayList<SpellGuide.Spell>()
-                  for (b in blocks) {
+                  val spellMiss = ArrayList<String>()
+                  for (b in blocks.sortedBy { x -> x.rect.top }) {
                       val sp = SpellGuide.match(applicationContext, b.text)
-                      if (sp != null && spellHits.none { x -> x.key == sp.key }) spellHits.add(sp)
+                      if (sp != null) {
+                          if (spellHits.none { x -> x.key == sp.key }) spellHits.add(sp)
+                      } else if (SPELL_CHARS[b.text.replace(" ", "").replace("　", "").replace("・", "")] == null) {
+                          // 像魔法名稱、但資料裡找不到的,照原文列出來,不要默默漏掉
+                          val t = b.text.replace(" ", "").replace("　", "")
+                          val k = t.count { c -> c in '゠'..'ヿ' }
+                          if (k >= 5 && k * 10 >= t.length * 7 && spellMiss.none { m -> m == t }) spellMiss.add(t)
+                      }
                   }
                   val spellMode = prefs.getBoolean("spell_mode", false)
                   if (spellHits.size >= 2 || (spellHits.size == 1 && spellMode)) {
                       val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                      val zh = spellHits.joinToString("\n") { x -> x.name + ":" + x.info }
-                      return listOf(ResultView.Item(rect, zh, maxOf(1, src.height / 6), spellHits.joinToString(" ") { x -> x.key }))
+                      // 左邊狀態欄的角色名稱 (最上面那個),只顯示這個角色的 MP
+                      var who: String? = null
+                      var whoTop = Int.MAX_VALUE
+                      for (b in blocks) {
+                          val t = b.text.replace(" ", "").replace("　", "").replace("・", "")
+                          val zhName = SPELL_CHARS[t] ?: continue
+                          if (b.rect.top < whoTop) {
+                              whoTop = b.rect.top
+                              who = zhName
+                          }
+                      }
+                      if (who != null) spellChar = who
+                      val cur = spellChar
+                      val zh = spellHits.joinToString("\n") { x -> x.name + ":" + (if (cur != null) SpellGuide.forChar(x.info, cur) else x.info) }
+                          .let { z -> if (cur != null) cur + "的魔法\n" + z else z }
+                      val zhAll = if (spellMiss.isEmpty()) zh else zh + "\n" + spellMiss.joinToString("\n") { m -> m + ":(魔法資料裡找不到)" }
+                      return listOf(ResultView.Item(rect, zhAll, maxOf(1, src.height / 6), "\u0001" + spellHits.joinToString(" ") { x -> x.key }))
                   }
 
                   val out = ArrayList<ResultView.Item>()
@@ -3123,7 +3324,7 @@ jobs:
               @Volatile
               private var lastTrMs = 0L
 
-              // 譯文框保留最近 3 段對話,新的來了才把最舊的擠掉
+              // 譯文框保留最近 10 段對話,框內可上下滑動看前後文
               private class Hist(var orig: String, var zh: String)
 
               private val history = ArrayList<Hist>()
@@ -3138,7 +3339,7 @@ jobs:
                       last.zh = zh
                   } else {
                       history.add(Hist(orig, zh))
-                      while (history.size > 3) history.removeAt(0)
+                      while (history.size > 10) history.removeAt(0)
                   }
               }
 
@@ -3970,10 +4171,19 @@ jobs:
                       }
                       toast("已重設,下次翻譯時會回到預設位置")
                   })
-                  addRow({ "上次耗時:辨識 " + lastOcrMs + " 毫秒、翻譯 " + lastTrMs + " 毫秒" }, { })
-                  addRow({ "攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
+                  addRow({ "章節攻略提示:" + (if (prefs.getBoolean("guide_hint", true)) "開" else "關") }, {
                       prefs.edit().putBoolean("guide_hint", !prefs.getBoolean("guide_hint", true)).apply()
                   })
+                  addRow({ "任務步驟面板:" + (if (walkPanel != null) "開 (點一下關閉)" else "關 (點一下開啟)") }, {
+                      if (walkPanel != null) {
+                          prefs.edit().putBoolean("wt_on", false).apply()
+                          hideWalk()
+                      } else {
+                          closeMenu()
+                          showWalk()
+                      }
+                  })
+                  addRow({ "上次耗時:辨識 " + lastOcrMs + " 毫秒、翻譯 " + lastTrMs + " 毫秒" }, { })
                   addRow({
                       val c = ChapterGuide.current(applicationContext)
                       val info = ChapterGuide.chapterInfo(applicationContext, c)
@@ -3982,6 +4192,7 @@ jobs:
                   }, {
                       val c = ChapterGuide.current(applicationContext)
                       ChapterGuide.set(applicationContext, if (c >= 8) 0 else c + 1)
+                      if (walkPanel != null) refreshWalk()
                   })
                   addRow({ "開啟本章攻略" }, {
                       closeMenu()
@@ -4121,9 +4332,8 @@ jobs:
                   return if (s.isEmpty()) null else s
               }
 
-              // 句子結尾後面多出來的 1 個殘字 (淡入中的字、游標) 去掉。兩個字以上可能是真的下一句,不動
-              private fun tidyJp(t: String): String =
-                  t.replace(Regex("(?<=[。！？!?])[ぁ-んァ-ヶ]$"), "")
+              // 不再刪句尾殘字:寧可多翻一個字,也不冒險刪掉真正的內容
+              private fun tidyJp(t: String): String = t
 
               // 這一行要不要翻:日文至少 2 個字,或是像樣的英文 (至少 5 個字母,字母佔大部分)
               private fun isJapanese(s: String): Boolean {
@@ -4248,7 +4458,22 @@ jobs:
 
               private fun showResult(list: List<ResultView.Item>) {
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  showGuideHint(list.joinToString(" ") { x -> x.orig + " " + x.text })
+                  val isSpell = list.size == 1 && list[0].orig.startsWith("\u0001")
+                  if (!isSpell) showGuideHint(list.joinToString(" ") { x -> x.orig + " " + x.text })
+                  if (autoOn() && isSpell) {
+                      // 魔法清單:一次全部列出,不進對話歷史;右上角的攻略提示先收起來,免得擋到清單
+                      val o = overlay
+                      if (o != null) {
+                          o.items = emptyList()
+                          o.region = null
+                          o.invalidate()
+                      }
+                      hideGuideHint()
+                      history.clear()
+                      ui.removeCallbacks(emptyHide)
+                      showSubtitle(list[0].text, list[0].orig.removePrefix("\u0001"))
+                      return
+                  }
                   if (autoOn()) {
                       // 自動模式:用可以移動、調整大小的譯文框,不蓋住原文
                       val o = overlay
@@ -4318,6 +4543,10 @@ jobs:
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   // 章節判斷一直在背景進行 (就算提示關掉,也會記住玩到哪)
                   val chap = ChapterGuide.update(applicationContext, text)
+                  ui.post {
+                      if (walkPanel != null) refreshWalk()
+                      else if (prefs.getBoolean("wt_on", false)) showWalk()
+                  }
                   if (!prefs.getBoolean("guide_hint", true)) return
                   val hits = ArrayList<Triple<String, Int, String>>()
                   for (e in loadGuideIndex()) {
@@ -4326,7 +4555,7 @@ jobs:
                           if (hits.size >= 2) break
                       }
                   }
-                  if (hits.isEmpty() && chap == null) {
+                  if (chap == null) {
                       hideGuideHint()
                       return
                   }
@@ -4341,11 +4570,16 @@ jobs:
                       tv.setPadding(dp(12), dp(8), dp(12), dp(8))
                       tv.setBackgroundColor(0xE61565C0.toInt())
                       tv.setOnClickListener {
+                          hideGuideHint()
+                          showWalk()
+                      }
+                      tv.setOnLongClickListener {
                           val i = Intent(this, GuideActivity::class.java)
                           i.putExtra("page", page)
                           i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                           startActivity(i)
                           hideGuideHint()
+                          true
                       }
                       val lpp = LinearLayout.LayoutParams(
                           LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -4355,8 +4589,7 @@ jobs:
                       lpp.gravity = Gravity.END
                       box.addView(tv, lpp)
                   }
-                  if (chap != null) addLine("📖 " + chap.text, chap.page)
-                  if (hits.isNotEmpty()) addLine("📖 攻略:" + hits.joinToString("、") { x -> x.third }, hits[0].second)
+                  if (chap != null) addLine("📖 " + chap.text + "(點我看本章步驟)", chap.page)
                   val tv = box
                   val lp = WindowManager.LayoutParams(
                       WindowManager.LayoutParams.WRAP_CONTENT,
@@ -4377,9 +4610,217 @@ jobs:
                   }
               }
 
+              // ---------------------------------------------------------------- 任務步驟面板
+
+              private var walkPanel: LinearLayout? = null
+              private var walkLp: WindowManager.LayoutParams? = null
+              private var walkTitle: TextView? = null
+              private var walkBody: TextView? = null
+              private var walkScroll: ScrollView? = null
+              private var walkExpanded = false
+
+              private fun hideWalk() {
+                  val p = walkPanel ?: return
+                  try {
+                      wm.removeView(p)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  walkPanel = null
+                  walkLp = null
+              }
+
+              private fun walkBtn(label: String, onClick: () -> Unit): TextView {
+                  val b = TextView(this)
+                  b.text = label
+                  b.textSize = 18f
+                  b.setTextColor(0xFFFFFFFF.toInt())
+                  b.setPadding(dp(10), dp(4), dp(10), dp(4))
+                  b.setOnClickListener { onClick() }
+                  return b
+              }
+
+              private fun walkMove(delta: Int) {
+                  val c = ChapterGuide.current(applicationContext)
+                  if (c == 0) return
+                  val n = Walkthrough.steps(applicationContext, c).size
+                  if (n == 0) return
+                  val i = Walkthrough.index(applicationContext, c)
+                  val j = i + delta
+                  if (j >= n) {
+                      if (c < 8) {
+                          ChapterGuide.set(applicationContext, c + 1)
+                          Walkthrough.setIndex(applicationContext, c + 1, 0)
+                          toast("本章完成,進入第" + (c + 1) + "章")
+                      } else {
+                          toast("已經是最後一步")
+                      }
+                  } else if (j >= 0) {
+                      Walkthrough.setIndex(applicationContext, c, j)
+                  }
+                  refreshWalk()
+              }
+
+              private fun showWalk() {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  prefs.edit().putBoolean("wt_on", true).apply()
+                  if (walkPanel != null) {
+                      refreshWalk()
+                      return
+                  }
+                  val mt = readMetrics()
+                  val rows = regionRows(mt[1])
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  box.setBackgroundColor(0xEE102030.toInt())
+                  box.setPadding(dp(8), dp(4), dp(8), dp(6))
+
+                  val head = LinearLayout(this)
+                  head.orientation = LinearLayout.HORIZONTAL
+                  head.gravity = Gravity.CENTER_VERTICAL
+                  val title = TextView(this)
+                  title.textSize = 13f
+                  title.setTextColor(0xFFFFD54F.toInt())
+                  head.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                  head.addView(walkBtn("◀") { walkMove(-1) })
+                  head.addView(walkBtn("▶") { walkMove(1) })
+                  head.addView(walkBtn("☰") {
+                      walkExpanded = !walkExpanded
+                      refreshWalk()
+                  })
+                  head.addView(walkBtn("📄") {
+                      val c = ChapterGuide.current(applicationContext)
+                      val st = Walkthrough.steps(applicationContext, c)
+                      val i = Walkthrough.index(applicationContext, c).coerceIn(0, maxOf(0, st.size - 1))
+                      val gi = Intent(this, GuideActivity::class.java)
+                      gi.putExtra("page", if (st.isNotEmpty()) st[i].page else (ChapterGuide.chapterInfo(applicationContext, c)?.start ?: 27))
+                      gi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      startActivity(gi)
+                  })
+                  head.addView(walkBtn("✕") {
+                      prefs.edit().putBoolean("wt_on", false).apply()
+                      hideWalk()
+                  })
+                  box.addView(head, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+                  val scroll = ScrollView(this)
+                  val body = TextView(this)
+                  body.textSize = 16f
+                  body.setTextColor(0xFFFFFFFF.toInt())
+                  scroll.addView(body)
+                  box.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(96)))
+
+                  val lp = WindowManager.LayoutParams(
+                      prefs.getInt("wt_w", mt[0] - dp(16)),
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.TRANSLUCENT
+                  )
+                  lp.gravity = Gravity.TOP or Gravity.START
+                  lp.x = prefs.getInt("wt_x", dp(8))
+                  lp.y = prefs.getInt("wt_y", rows[1] + dp(170))
+
+                  // 拖曳標題列可以移動面板
+                  var lx = 0f
+                  var ly = 0f
+                  title.setOnTouchListener { _, e ->
+                      when (e.action) {
+                          MotionEvent.ACTION_DOWN -> {
+                              lx = e.rawX
+                              ly = e.rawY
+                          }
+                          MotionEvent.ACTION_MOVE -> {
+                              lp.x += (e.rawX - lx).toInt()
+                              lp.y += (e.rawY - ly).toInt()
+                              lx = e.rawX
+                              ly = e.rawY
+                              try {
+                                  wm.updateViewLayout(box, lp)
+                              } catch (ex: Exception) {
+                                  // ignore
+                              }
+                          }
+                          MotionEvent.ACTION_UP -> prefs.edit().putInt("wt_x", lp.x).putInt("wt_y", lp.y).apply()
+                      }
+                      true
+                  }
+
+                  walkPanel = box
+                  walkLp = lp
+                  walkTitle = title
+                  walkBody = body
+                  walkScroll = scroll
+                  try {
+                      wm.addView(box, lp)
+                  } catch (e: Exception) {
+                      walkPanel = null
+                      walkLp = null
+                      return
+                  }
+                  bringButtonToFront()
+                  refreshWalk()
+              }
+
+              private fun refreshWalk() {
+                  val box = walkPanel ?: return
+                  val title = walkTitle ?: return
+                  val body = walkBody ?: return
+                  val scroll = walkScroll ?: return
+                  val c = ChapterGuide.current(applicationContext)
+                  val steps = if (c == 0) emptyList() else Walkthrough.steps(applicationContext, c)
+                  if (steps.isEmpty()) {
+                      title.text = "📖 任務步驟"
+                      body.text = "還不知道你玩到第幾章。長按懸浮球開選單,點「目前章節」選擇。"
+                      return
+                  }
+                  val i = Walkthrough.index(applicationContext, c).coerceIn(0, steps.size - 1)
+                  title.text = "📖 第" + c + "章  第" + (i + 1) + "/" + steps.size + "步  " + steps[i].place
+                  val sb = SpannableStringBuilder()
+                  if (!walkExpanded) {
+                      sb.append(steps[i].text)
+                      if (i + 1 < steps.size) {
+                          val st = sb.length
+                          sb.append("\n下一步:" + steps[i + 1].text)
+                          sb.setSpan(ForegroundColorSpan(0xFF9AA7B4.toInt()), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                      }
+                  } else {
+                      var curStart = 0
+                      for (k in steps.indices) {
+                          val st = sb.length
+                          sb.append((if (k == i) "👉 " else "") + (k + 1) + ". " + steps[k].text + "\n")
+                          if (k == i) {
+                              curStart = st
+                              sb.setSpan(ForegroundColorSpan(0xFFFFD54F.toInt()), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                              sb.setSpan(StyleSpan(Typeface.BOLD), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                          } else if (k < i) {
+                              sb.setSpan(ForegroundColorSpan(0xFF7C8793.toInt()), st, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                          }
+                      }
+                      body.post {
+                          val ly = body.layout
+                          if (ly != null) scroll.scrollTo(0, ly.getLineTop(ly.getLineForOffset(curStart)))
+                      }
+                  }
+                  body.text = sb
+                  scroll.scrollTo(0, 0)
+                  val h = if (walkExpanded) dp(260) else dp(96)
+                  val slp = scroll.layoutParams
+                  if (slp != null && slp.height != h) {
+                      slp.height = h
+                      scroll.layoutParams = slp
+                  }
+                  try {
+                      walkLp?.let { wm.updateViewLayout(box, it) }
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+              }
+
               // ---------------------------------------------------------------- 結束
 
               override fun onDestroy() {
+                  hideWalk()
                   try {
                       val re = regionEditor
                       if (re != null) wm.removeView(re)
@@ -4441,6 +4882,50 @@ jobs:
                   worker.shutdownNow()
                   bgThread.quitSafely()
                   super.onDestroy()
+              }
+          }
+          __SSFILE_EOF__
+          cat > 'app/src/main/java/com/example/sstranslator/Walkthrough.kt' <<'__SSFILE_EOF__'
+          package com.example.sstranslator
+
+          import android.content.Context
+
+          /** 每章的流程步驟 (資料來自攻略本),玩到哪一步由玩家用 ◀ ▶ 自己標記 */
+          object Walkthrough {
+
+              class Step(val place: String, val page: Int, val text: String)
+
+              private var data: HashMap<Int, ArrayList<Step>>? = null
+
+              private fun load(ctx: Context): HashMap<Int, ArrayList<Step>> {
+                  val d = data
+                  if (d != null) return d
+                  val out = HashMap<Int, ArrayList<Step>>()
+                  try {
+                      ctx.assets.open("walkthrough.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                          for (l in lines) {
+                              val p = l.split("|", limit = 6)
+                              if (p.size >= 6 && p[0] == "S") {
+                                  val ch = p[1].trim().toIntOrNull() ?: continue
+                                  val page = p[4].trim().toIntOrNull() ?: 0
+                                  out.getOrPut(ch) { ArrayList() }.add(Step(p[3].trim(), page, p[5].trim()))
+                              }
+                          }
+                      }
+                  } catch (e: Exception) {
+                      // 沒有資料就不顯示
+                  }
+                  data = out
+                  return out
+              }
+
+              fun steps(ctx: Context, ch: Int): List<Step> = load(ctx)[ch] ?: emptyList()
+
+              fun index(ctx: Context, ch: Int): Int =
+                  ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("wt_step_" + ch, 0)
+
+              fun setIndex(ctx: Context, ch: Int, i: Int) {
+                  ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE).edit().putInt("wt_step_" + ch, i).apply()
               }
           }
           __SSFILE_EOF__
