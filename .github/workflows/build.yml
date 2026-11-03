@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.2"
+                  versionName = "3.3"
               }
 
               buildTypes {
@@ -369,6 +369,9 @@ jobs:
           ディグ・ボルト=雷擊破
           ラグナ・ブレード=神滅斬
           アストラル・ヴァイン=魔皇靈斬
+
+          # HELP 說明裡的「ヘックス」是地圖的格子
+          <ヘックス=マス
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -639,6 +642,13 @@ jobs:
           96|小型遊戲資料
           97|版權頁
           __SSFILE_EOF__
+          cat > 'app/src/main/assets/spellhelp.txt' <<'__SSFILE_EOF__'
+          # HELP 說明的固定譯文 (遊戲畫面上的日文說明 | 台灣繁體中文)。辨識到相近的日文就直接用這裡的,不再現場翻譯
+          ディム・ウィンS・・・ディム・ウィンの方向指定型バージョン。指定した方向のユニットをふきとばす事ができます。|魔風S:魔風的方向指定型。可以把指定方向上的單位吹飛。
+          ディム・ウィンC・・・強風を起こして敵を吹き飛ばす魔法の1ヘックス専用型。|魔風C:引發強風把敵人吹飛的魔法,只作用於 1 格的專用型。
+          エルメキア・ランス・・・精霊魔法だが精神にダメージをあたえる事ができるため、魔族などにも効果がある。|烈閃槍:雖然是精靈魔法,但能對精神造成傷害,所以對魔族等也有效。
+          ダイナスト・ブレスS・・・黒魔法のひとつ、魔族に効果がある。|霸王冰河烈S:黑魔法之一,對魔族有效。
+          __SSFILE_EOF__
           cat > 'app/src/main/assets/spellpages.txt' <<'__SSFILE_EOF__'
           # 莉娜的魔法選單,每頁 6 個 (順序同遊戲畫面)。格式: 角色|頁|魔法日文名...
           莉娜|1|バースト・ロンド|フレア・アロー|フレア・ランス|ファイアー・ボール|バースト・フレア|ブラスト・ボム
@@ -672,7 +682,7 @@ jobs:
           ドラグスレイブC|龍破斬C|單體・黑魔法 / MP 莉娜40 希菲爾85 / 氣絕(100%)
           ドラグスレイブF|龍破斬F|大範圍・黑魔法 / MP 莉娜60 / 氣絕(100%)
           ブラストアッシュ|黑妖陣|直線・黑魔法 / MP 莉娜8 那加12 / 氣絕(100%) / 給予999的傷害
-          ラグナブレード|神滅斬|單體・黑魔法 / MP 莉娜80 / (0%) / 給予999的傷害
+          ラグナブレード|神滅斬|單體・黑魔法 / MP 莉娜80 / 給予999的傷害
           アストラルヴァイン|魔皇靈斬|單體 / MP 傑爾加帝斯8
           ヴィスファランク|靈王結魔彈|單體 / MP 亞美莉亞8
           エルメキアランス|烈閃槍|單體 / MP 莉娜12 那加10 傑爾加帝斯13 / 氣絕(35%) / 雖是精靈魔法但對魔族也有效
@@ -1565,7 +1575,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.2 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.3 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2339,7 +2349,7 @@ jobs:
                   return if (bestScore >= 0.62f) best else null
               }
 
-              private class Page(val who: String, val spells: List<Spell>)
+              private class Page(val who: String, val no: Int, val spells: List<Spell>)
 
               private var pages: List<Page>? = null
 
@@ -2360,7 +2370,7 @@ jobs:
                                   val sp = all.firstOrNull { x -> x.key == key }
                                   if (sp != null) list.add(sp)
                               }
-                              out.add(Page(p[0], list))
+                              out.add(Page(p[0], p[1].trim().toIntOrNull() ?: 0, list))
                           }
                       }
                   } catch (e: Exception) {
@@ -2388,7 +2398,7 @@ jobs:
               }
 
               /** 辨識到的魔法如果大多落在某一頁 (莉娜、那加的選單每頁固定),就把那一頁完整照畫面順序列出 */
-              fun pageFor(ctx: Context, who: String?, hits: List<Spell>): List<Spell>? {
+              fun pageFor(ctx: Context, who: String?, hits: List<Spell>, pageNo: Int? = null): List<Spell>? {
                   var best: Page? = null
                   var bestN = 0
                   var tie = false
@@ -2404,9 +2414,63 @@ jobs:
                       }
                   }
                   if (best == null) return null
+                  // 知道角色和頁碼:直接用那一頁 (只要有 1 個吻合)
+                  if (who != null && pageNo != null) {
+                      val pg = loadPages(ctx).firstOrNull { x -> x.who == who && x.no == pageNo }
+                      if (pg != null && pg.spells.any { x -> hits.any { h -> h.key == x.key } }) return pg.spells
+                  }
                   // 不知道是哪個角色時,要有 5 個以上吻合而且沒有並列才用
                   if (who == null && (bestN < 5 || tie)) return null
-                  return if (bestN >= 2) best.spells else null
+                  if (bestN >= 2) return best.spells
+                  return if (who != null && bestN == 1 && !tie) best.spells else null
+              }
+
+              /** HELP 開頭「魔法名稱・・・說明」:回傳 (固定中文名, 說明內文),認不出魔法名稱就回傳 null */
+              fun splitHelp(ctx: Context, jp: String): Pair<String, String>? {
+                  val t = jp.replace(" ", "").replace("　", "")
+                  val i = t.indexOf("・・・")
+                  if (i !in 3..20) return null
+                  val sp = match(ctx, t.substring(0, i)) ?: return null
+                  return Pair(sp.name, t.substring(i).trimStart('・'))
+              }
+
+              private var helps: List<Pair<String, String>>? = null
+
+              /** 固定譯文:HELP 說明的日文跟 spellhelp.txt 裡某一條夠像,就直接用存好的中文 */
+              fun helpText(ctx: Context, jp: String): String? {
+                  var h = helps
+                  if (h == null) {
+                      val l = ArrayList<Pair<String, String>>()
+                      try {
+                          ctx.assets.open("spellhelp.txt").bufferedReader(Charsets.UTF_8).useLines { lines ->
+                              for (x in lines) {
+                                  if (x.startsWith("#")) continue
+                                  val i = x.lastIndexOf('|')
+                                  if (i <= 0) continue
+                                  l.add(Pair(x.substring(0, i).replace(" ", "").replace("　", ""), x.substring(i + 1)))
+                              }
+                          }
+                      } catch (e: Exception) {
+                      }
+                      h = l
+                      helps = l
+                  }
+                  val t = jp.replace(" ", "").replace("　", "")
+                  var best: String? = null
+                  var bs = 0f
+                  for ((k, v) in h) {
+                      // 只比開頭那一段 (魔法名稱 + 前面一小段),後面辨識錯很多也沒關係
+                      val n = minOf(k.length, t.length, 24)
+                      if (n < 6) continue
+                      val d = lev(k.take(n), t.take(n))
+                      val sc = 1f - d.toFloat() / n
+                      if (sc > bs) {
+                          bs = sc
+                          best = v
+                      }
+                  }
+                  if (bs >= 0.7f) return best
+                  return null
               }
 
               /** 說明裡的「MP 莉娜10 那加8 …」只留指定角色那一個 */
@@ -2825,6 +2889,63 @@ jobs:
               @Volatile
               private var spellCharAt = 0L
               private var lastHelpJp = ""
+              private var helpView: TextView? = null
+              @Volatile
+              private var helpBoxRect: Rect? = null
+              private var helpMiss = 0
+              @Volatile
+              private var lastWasSpell = false
+
+              private fun showHelpBox(zh: String, r: Rect) {
+                  helpMiss = 0
+                  var v = helpView
+                  if (v == null) {
+                      v = TextView(this)
+                      v.setTextColor(Color.WHITE)
+                      v.setBackgroundColor(0xE6101820.toInt())
+                      v.setPadding(dp(8), dp(6), dp(8), dp(6))
+                      v.textSize = 15f
+                      val lp = WindowManager.LayoutParams(
+                          r.width(), r.height(),
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                          PixelFormat.TRANSLUCENT
+                      )
+                      lp.gravity = Gravity.TOP or Gravity.START
+                      lp.x = r.left
+                      lp.y = r.top
+                      try {
+                          (getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
+                      } catch (e: Exception) {
+                          return
+                      }
+                      helpView = v
+                  } else {
+                      try {
+                          val lp = v.layoutParams as WindowManager.LayoutParams
+                          lp.x = r.left
+                          lp.y = r.top
+                          lp.width = r.width()
+                          lp.height = r.height()
+                          (getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(v, lp)
+                      } catch (e: Exception) {
+                      }
+                  }
+                  v.text = "【說明】" + zh
+                  v.visibility = View.VISIBLE
+                  helpBoxRect = r
+              }
+
+              private fun helpMissed() {
+                  helpMiss++
+                  if (helpMiss >= 2) hideHelpBox()
+              }
+
+              private fun hideHelpBox() {
+                  helpBoxRect = null
+                  helpMiss = 0
+                  helpView?.visibility = View.GONE
+              }
               private var lastHelpZh = ""
               private val SPELL_CHARS = mapOf(
                   "リナ" to "莉娜", "ナーガ" to "那加", "アメリア" to "亞美莉亞",
@@ -3088,6 +3209,7 @@ jobs:
                   ui.removeCallbacks(emptyHide)
                   hideSubtitle()
                   hideGuideHint()
+                  hideHelpBox()
               }
 
               // ---------------------------------------------------------------- 擷取畫面
@@ -3334,6 +3456,7 @@ jobs:
                           looksMenu = false
                       }
                       if (!looksMenu) {
+                          ui.post { helpMissed() }
                           if (engine == "aiv") return runAiv()
                           val cut = regionRows(readMetrics()[1])[0] - topOffset
                           if (cut > 0 && cut < src.height - 40) {
@@ -3422,21 +3545,28 @@ jobs:
                   lastOcrMs = SystemClock.uptimeMillis() - tStart
                   var blocks = pickBestRows(cands)
 
-                  // HELP 說明:標題列下面那幾行是說明文字,單獨翻譯,放在譯文框最上面
+                  // HELP 說明:標題列下面那幾行是說明文字,單獨翻譯,顯示在另一個說明框 (黃框位置),跟 HELP 一起開關
                   var helpZh: String? = null
                   var helpJp = ""
+                  val hb0 = helpBoxRect
+                  if (hb0 != null) blocks = ArrayList(blocks.filter { x -> !Rect.intersects(x.rect, hb0) })
                   val hr = helpRect
                   if (hr != null) {
-                      val lim = hr.bottom + maxOf(150, 6 * hr.height())
+                      val lim = hr.bottom + maxOf(260, 10 * hr.height())
                       val body = blocks.filter { x -> x.rect.top >= hr.bottom - 4 && x.rect.top <= lim }.sortedBy { x -> x.rect.top }
                       blocks = ArrayList(blocks.filter { x -> !body.contains(x) })
                       helpJp = body.joinToString("") { x -> x.text }
                       if (helpJp.length >= 4) {
-                          if (helpJp == lastHelpJp && lastHelpZh.isNotEmpty()) {
+                          val fixed = SpellGuide.helpText(applicationContext, helpJp)
+                          if (fixed != null) {
+                              helpZh = fixed
+                          } else if (helpJp == lastHelpJp && lastHelpZh.isNotEmpty()) {
                               helpZh = lastHelpZh
                           } else {
                               try {
-                                  val z = translateText(tr, helpJp, engine)
+                                  // 魔法名稱用固定譯名,效果說明照畫面內容翻譯
+                                  val sh = SpellGuide.splitHelp(applicationContext, helpJp)
+                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateText(tr, sh.second, engine) else translateText(tr, helpJp, engine)
                                   if (z.isNotBlank()) {
                                       helpZh = z
                                       lastHelpJp = helpJp
@@ -3447,6 +3577,20 @@ jobs:
                               }
                           }
                       }
+                      val hz = helpZh
+                      if (hz != null) {
+                          val bodyBottom = body.maxOfOrNull { x -> x.rect.bottom } ?: hr.bottom
+                          val top = bodyBottom + 10
+                          val h = minOf(src.height + topOffset - top - 60, 380)
+                          if (h > 80) {
+                              val br = Rect(src.width / 20, top, src.width - src.width / 20, top + h)
+                              ui.post { showHelpBox(hz, br) }
+                          }
+                      } else {
+                          ui.post { helpMissed() }
+                      }
+                  } else {
+                      ui.post { helpMissed() }
                   }
 
                   // 魔法選單:辨識到魔法名稱就顯示中文名、範圍、消耗 MP 和效果,不去翻譯
@@ -3486,21 +3630,25 @@ jobs:
                       }
                       // 這一幀沒看到角色名稱時,只沿用 8 秒內看到的
                       val cur = if (nowMs - spellCharAt < 8000) spellChar else null
-                      val page = SpellGuide.pageFor(applicationContext, cur, spellHits)
+                      var pageNo: Int? = null
+                      for (b in blocks) {
+                          val mm = Regex("PAGE\\s*([0-9])\\s*/\\s*[0-9]").find(b.text.uppercase())
+                          if (mm != null) {
+                              pageNo = mm.groupValues[1].toInt()
+                              break
+                          }
+                      }
+                      val page = SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
                       if (page != null) spellMiss.clear()
                       val zh = listHits.joinToString("\n") { x -> x.name + ":" + (if (cur != null) SpellGuide.forChar(x.info, cur) else x.info) }
                       val zhList = if (spellMiss.isEmpty()) zh else zh + "\n" + spellMiss.joinToString("\n") { m -> m + ":(魔法資料裡找不到)" }
-                      val zhAll = if (helpZh != null) "【說明】" + helpZh + "\n\n" + zhList else zhList
+                      val zhAll = zhList
                       val res = listOf(ResultView.Item(rect, zhAll, maxOf(1, src.height / 6), "\u0001" + listHits.joinToString(" ") { x -> x.key }))
                       return res
                   }
 
-                  if (helpZh != null) {
-                      val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                      val res = listOf(ResultView.Item(rect, "【說明】" + helpZh, maxOf(1, src.height / 6), "\u0001" + helpJp))
-                      return res
-                  }
+                  if (helpZh != null) return emptyList()
                   if (engine == "aiv") return runAiv()
 
                   val out = ArrayList<ResultView.Item>()
@@ -3713,7 +3861,7 @@ jobs:
                               if (autoOn()) {
                                   // 對話框消失了,譯文先留著讓你看完,20 秒後自動收起
                                   ui.removeCallbacks(emptyHide)
-                                  ui.postDelayed(emptyHide, 20000)
+                                  ui.postDelayed(emptyHide, if (lastWasSpell) 800L else 20000L)
                               } else {
                                   hideOverlay()
                               }
@@ -4435,6 +4583,10 @@ jobs:
                   addRow({ "清除譯文" }, {
                       hideOverlay()
                   })
+                  addRow({ "停止翻譯服務" }, {
+                      closeMenu()
+                      stopSelf()
+                  })
                   addRow({ "關閉選單" }, {
                       closeMenu()
                   })
@@ -4674,10 +4826,12 @@ jobs:
                       }
                       hideGuideHint()
                       history.clear()
+                      lastWasSpell = true
                       ui.removeCallbacks(emptyHide)
                       showSubtitle(list[0].text, list[0].orig.removePrefix("\u0001"))
                       return
                   }
+                  lastWasSpell = false
                   if (autoOn()) {
                       // 自動模式:用可以移動、調整大小的譯文框,不蓋住原文
                       val o = overlay
