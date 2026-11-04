@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.7"
+                  versionName = "3.9"
               }
 
               buildTypes {
@@ -1575,7 +1575,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.7 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.9 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2453,6 +2453,28 @@ jobs:
                   if (i !in 3..20) return null
                   val sp = match(ctx, t.substring(0, i)) ?: return null
                   return Pair(sp.name, t.substring(i).trimStart('・'))
+              }
+
+              private var nameRx: List<Pair<Regex, String>>? = null
+
+              /** 任何要翻譯的日文裡出現的魔法名稱 (有沒有中間的「・」都算) 先換成固定的台灣動畫譯名,再交給翻譯 */
+              fun replaceNames(ctx: Context, text: String): String {
+                  var rx = nameRx
+                  if (rx == null) {
+                      val l = ArrayList<Pair<Regex, String>>()
+                      for (sp in load(ctx).sortedByDescending { x -> x.key.length }) {
+                          if (sp.key.length < 4) continue
+                          val pat = sp.key.map { c -> Regex.escape(c.toString()) }.joinToString("[・·•\\s]*")
+                          l.add(Pair(Regex(pat), sp.name))
+                      }
+                      rx = l
+                      nameRx = l
+                  }
+                  var t = text
+                  for ((r, n) in rx) {
+                      if (r.containsMatchIn(t)) t = r.replace(t, n)
+                  }
+                  return t
               }
 
               private var helps: List<Pair<String, String>>? = null
@@ -3464,6 +3486,7 @@ jobs:
                   val rec = recognizer ?: throw IllegalStateException("recognizer")
 
                   val spellModeOn = prefs.getBoolean("spell_mode", false)
+                  var menuFrame = false
                   fun runAiv(): List<ResultView.Item> {
                       // 魔法選單模式會把翻譯範圍往上延伸到畫面最上面,看圖時只送原本設定的範圍,圖小比較快
                       var img = src
@@ -3508,7 +3531,7 @@ jobs:
                       try {
                           val qt = Tasks.await(rec.process(InputImage.fromBitmap(src, 0)), 6, TimeUnit.SECONDS)
                           val all = qt.text.uppercase()
-                          if (all.contains("PAGE") || all.contains("HELP") || all.contains("えらんで") || all.contains("呪文")) looksMenu = true
+                          if (all.contains("PAGE") || all.contains("HELP") || all.contains("STEP") || all.contains("HIT") || all.contains("えらんで") || all.contains("呪文")) looksMenu = true
                           if (!looksMenu) {
                               var n = 0
                               for (bl in qt.textBlocks) {
@@ -3521,6 +3544,7 @@ jobs:
                       } catch (e: Exception) {
                           looksMenu = false
                       }
+                      menuFrame = looksMenu
                       if (looksMenu) {
                           // 遊戲的魔法選單 / HELP 還在,魔法翻譯欄就繼續留著
                           ui.post { lastSpellOk = SystemClock.uptimeMillis() }
@@ -3556,8 +3580,11 @@ jobs:
                   val variants = ArrayList<Pair<Bitmap, Float>>()
                   variants.add(Pair(src, 1f))
                   variants.add(Pair(enhance(src, 2f, 1.8f), 2f))
-                  variants.add(Pair(enhance(src, 2f, -1.8f), 2f))
-                  variants.add(Pair(goldMask(src, 2f), 2f))
+                  if (!menuFrame) {
+                      // 魔法選單 / HELP 的字是白字或粉紅字,不需要反相和金色版本,少做兩個比較快
+                      variants.add(Pair(enhance(src, 2f, -1.8f), 2f))
+                      variants.add(Pair(goldMask(src, 2f), 2f))
+                  }
 
                   val raw = StringBuilder()
                   val cands = ArrayList<Cand>()
@@ -3644,7 +3671,7 @@ jobs:
                               try {
                                   // 魔法名稱用固定譯名,效果說明照畫面內容翻譯
                                   val sh = SpellGuide.splitHelp(applicationContext, helpJp)
-                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateText(tr, sh.second, engine) else translateText(tr, helpJp, engine)
+                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateText(tr, SpellGuide.replaceNames(applicationContext, sh.second), engine) else translateText(tr, SpellGuide.replaceNames(applicationContext, helpJp), engine)
                                   if (z.isNotBlank()) {
                                       helpZh = z
                                       lastHelpJp = helpJp
@@ -3912,14 +3939,6 @@ jobs:
                       return
                   }
                   curSig = sig
-                  if (helpBoxRect != null || lastWasSpell) {
-                      // 畫面變了卻沒有再看到 HELP / 魔法清單,就是已經關掉了,把說明框和清單一起收起來
-                      val t0 = SystemClock.uptimeMillis()
-                      ui.postDelayed({
-                          if (helpBoxRect != null && lastHelpOk < t0) hideHelpBox()
-                          if (lastWasSpell && lastSpellOk < t0) hideOverlay()
-                      }, 2000)
-                  }
                   latestCrop?.recycle()
                   latestCrop = crop
                   latestTop = top
@@ -3976,6 +3995,8 @@ jobs:
               private fun runAuto() {
                   val c0 = latestCrop ?: return
                   latestCrop = null
+                  // 魔法選單 / HELP 開著的時候只看最新的畫面,舊的不用排隊 (排隊會讓說明晚很久才出來)
+                  if (lastWasSpell || helpBoxRect != null) clearAutoQueue()
                   autoQueue.addLast(Pair(c0, latestTop))
                   while (autoQueue.size > 4) autoQueue.removeFirst().first.recycle()
                   drainAuto()
@@ -4270,7 +4291,9 @@ jobs:
                   if (changed && autoOn() && !paused) renderHistory()
               }
 
-              private fun translateUncached(tr: Translator, jp0: String, engine: String): String {
+              private fun translateUncached(tr: Translator, jp00: String, engine: String): String {
+                  // 專有名詞 (魔法名稱) 一律先換成固定譯名,所有翻譯方式都一樣
+                  val jp0 = SpellGuide.replaceNames(applicationContext, jp00)
                   val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
                   if (engine == "smart") {
                       val z1 = translateText(tr, jp0, "both")
