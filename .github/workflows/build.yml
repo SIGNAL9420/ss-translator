@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.6"
+                  versionName = "3.7"
               }
 
               buildTypes {
@@ -1575,7 +1575,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.6 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.7 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1596,12 +1596,6 @@ jobs:
                   root.addView(makeButton("② 下載離線翻譯模型 (日文+英文,只需一次,需要網路)") { downloadModel() })
 
                   val cfg = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  val tip = TextView(this)
-                  tip.text = "翻譯範圍 (數字是畫面高度的百分比)。把上緣、下緣調到剛好框住遊戲的對話框,可避免翻到選單、日期等雜訊。"
-                  tip.setPadding(0, dp(12), 0, 0)
-                  root.addView(tip)
-                  root.addView(makeSlider("上緣", "top", 18, cfg))
-                  root.addView(makeSlider("下緣", "bot", 34, cfg))
                   root.addView(makeSizeSlider("譯文字幕字體大小", "sub_sp", 18, 12, 36, cfg))
                   root.addView(makeSizeSlider("HELP 說明字體大小", "help_sp", 18, 12, 36, cfg))
 
@@ -2440,12 +2434,12 @@ jobs:
                           tie = true
                       }
                   }
-                  if (best == null) return null
                   // 知道角色和頁碼:直接用那一頁 (只要有 1 個吻合)
                   if (who != null && pageNo != null) {
                       val pg = loadPages(ctx).firstOrNull { x -> x.who == who && x.no == pageNo }
-                      if (pg != null && pg.spells.any { x -> hits.any { h -> h.key == x.key } }) return pg.spells
+                      if (pg != null && (hits.isEmpty() || pg.spells.any { x -> hits.any { h -> h.key == x.key } })) return pg.spells
                   }
+                  if (best == null) return null
                   // 不知道是哪個角色時,要有 5 個以上吻合而且沒有並列才用
                   if (who == null && (bestN < 5 || tie)) return null
                   if (bestN >= 2) return best.spells
@@ -2914,6 +2908,8 @@ jobs:
 
               @Volatile
               private var spellChar: String? = null
+              private var spellPage = 0
+              private var spellPageAt = 0L
               @Volatile
               private var spellCharAt = 0L
               private var lastHelpJp = ""
@@ -3566,6 +3562,7 @@ jobs:
                   val raw = StringBuilder()
                   val cands = ArrayList<Cand>()
                   var helpRect: Rect? = null
+                  var pageNoRaw: Int? = null
                   try {
                       // 4 種版本同時送去辨識,比一個一個等快很多
                       ui.post { setLabel("辨") }
@@ -3593,6 +3590,10 @@ jobs:
                               for (ln in b.lines) {
                                   val box = ln.boundingBox ?: continue
                                   val up = ln.text.uppercase()
+                                  if (pageNoRaw == null) {
+                                      val mm = Regex("PAGE\\s*([0-9])\\s*/\\s*[0-9]").find(up)
+                                      if (mm != null) pageNoRaw = mm.groupValues[1].toInt()
+                                  }
                                   if (helpRect == null && (up.contains("HELP") || (up.contains("NEXT") && up.contains("END")))) {
                                       helpRect = Rect(
                                           (box.left / scale).toInt(),
@@ -3686,35 +3687,35 @@ jobs:
                   val spellMode = prefs.getBoolean("spell_mode", false)
                   // 畫面上有「呪文をえらんでね」就是魔法選單,認不出來的行不要當對話亂翻
                   val spellBanner = spellMode && blocks.any { x -> x.text.contains("えらんで") || x.text.contains("呪文を") }
-                  if (spellBanner && spellHits.isEmpty()) return emptyList()
-                  if (spellHits.size >= 2 || (spellHits.size == 1 && (spellMode || spellBanner))) {
+                  // 左邊狀態欄的角色名稱 (最上面那個)
+                  var who: String? = null
+                  var whoTop = Int.MAX_VALUE
+                  for (b in blocks) {
+                      val zhName = SpellGuide.charOf(b.text) ?: continue
+                      if (b.rect.top < whoTop) {
+                          whoTop = b.rect.top
+                          who = zhName
+                      }
+                  }
+                  val nowMs = SystemClock.uptimeMillis()
+                  if (who != null) {
+                      spellChar = who
+                      spellCharAt = nowMs
+                  }
+                  // 這一幀沒看到角色名稱時,沿用 20 秒內看到的 (HELP 蓋住選單時用)
+                  val cur = if (nowMs - spellCharAt < 20000) spellChar else null
+                  val rawPage = pageNoRaw
+                  if (rawPage != null) {
+                      spellPage = rawPage
+                      spellPageAt = nowMs
+                  }
+                  val pageNo: Int? = if (rawPage != null) rawPage else if (nowMs - spellPageAt < 20000) spellPage else null
+                  // 知道角色和頁碼就直接用那一頁的固定清單,不管這一幀認得出幾個魔法名稱
+                  val fixedPage = if (spellMode && cur != null && pageNo != null) SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo) else null
+                  if (spellBanner && spellHits.isEmpty() && fixedPage == null) return emptyList()
+                  if (fixedPage != null || spellHits.size >= 2 || (spellHits.size == 1 && (spellMode || spellBanner))) {
                       val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                      // 左邊狀態欄的角色名稱 (最上面那個),只顯示這個角色的 MP
-                      var who: String? = null
-                      var whoTop = Int.MAX_VALUE
-                      for (b in blocks) {
-                          val zhName = SpellGuide.charOf(b.text) ?: continue
-                          if (b.rect.top < whoTop) {
-                              whoTop = b.rect.top
-                              who = zhName
-                          }
-                      }
-                      val nowMs = SystemClock.uptimeMillis()
-                      if (who != null) {
-                          spellChar = who
-                          spellCharAt = nowMs
-                      }
-                      // 這一幀沒看到角色名稱時,只沿用 8 秒內看到的
-                      val cur = if (nowMs - spellCharAt < 8000) spellChar else null
-                      var pageNo: Int? = null
-                      for (b in blocks) {
-                          val mm = Regex("PAGE\\s*([0-9])\\s*/\\s*[0-9]").find(b.text.uppercase())
-                          if (mm != null) {
-                              pageNo = mm.groupValues[1].toInt()
-                              break
-                          }
-                      }
-                      val page = SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
+                      val page = fixedPage ?: SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
                       if (page != null) spellMiss.clear()
                       val zh = listHits.joinToString("\n") { x -> x.name + ":" + x.info.split(" / ").filter { q -> !q.startsWith("MP ") }.joinToString(" / ") }
@@ -4258,6 +4259,14 @@ jobs:
                   if (items != null) {
                       shownItems = items.map { x -> if (x.orig == jp) ResultView.Item(x.rect, ai, x.lineH, x.orig) else x }
                   }
+                  // HELP 說明框的譯文被 AI 換成比較好的
+                  val hv = helpView
+                  val hr0 = helpBoxRect
+                  if (hv != null && hr0 != null && hv.visibility == View.VISIBLE) {
+                      val curText = hv.text.toString().removePrefix("【說明】")
+                      if (curText.contains(old)) showHelpBox(curText.replace(old, ai), hr0)
+                  }
+                  if (lastHelpZh.contains(old)) lastHelpZh = lastHelpZh.replace(old, ai)
                   if (changed && autoOn() && !paused) renderHistory()
               }
 
