@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.14"
+                  versionName = "3.15"
               }
 
               buildTypes {
@@ -385,6 +385,11 @@ jobs:
           最強の黒魔法=最強的黑魔法
           ユニット=單位
           <ユ二ット=ユニット
+          指定位置発動=指定位置發動
+          １カ所集中攻撃=單點集中攻擊
+          1カ所集中攻撃=單點集中攻擊
+          <１力所=１カ所
+          <1力所=1カ所
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -1588,7 +1593,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.14 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.15 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2486,10 +2491,25 @@ jobs:
               /** HELP 開頭「魔法名稱・・・說明」:回傳 (固定中文名, 說明內文),認不出魔法名稱就回傳 null */
               fun splitHelp(ctx: Context, jp: String): Pair<String, String>? {
                   val t = jp.replace(" ", "").replace("　", "")
-                  val i = t.indexOf("・・・")
-                  if (i !in 3..20) return null
+                  val dots = "・·•.．…‥,，、:：∴"
+                  var i = -1
+                  var j = 0
+                  while (j < t.length - 1) {
+                      if (t[j] in dots && t[j + 1] in dots) {
+                          i = j
+                          break
+                      }
+                      j++
+                  }
+                  if (i !in 3..22) {
+                      // 找不到那排點:名稱就是開頭那串片假名,後面如果接一個英文字母 / 圓圈字,算變化版
+                      var k = 0
+                      while (k < t.length && (t[k] in '゠'..'ヿ')) k++
+                      if (k < 4) return null
+                      i = if (k < t.length && (t[k].isLetterOrDigit() && t[k].code < 128 || t[k] in "○〇◯Ｃ")) k + 1 else k
+                  }
                   val sp = match(ctx, t.substring(0, i)) ?: return null
-                  return Pair(sp.name, t.substring(i).trimStart('・'))
+                  return Pair(sp.name, t.substring(i).trimStart { c -> c in dots })
               }
 
               private var nameRx: List<Pair<Regex, String>>? = null
@@ -3891,8 +3911,13 @@ jobs:
                   // 上一筆沒有句尾標點 = 還沒講完的半句,容許多幾個字辨識不同
                   val lastDone = nL.isNotEmpty() && nL.last() in "。！？!?」』♪…~～"
                   val tol = if (lastDone) maxOf(1, sL.length / 4) else maxOf(2, sL.length / 3)
+                  // 半句的字有 8 成以上都出現在完整句裡 (名字和句子順序不同也算) → 也當作同一句
+                  val partOf = last != null && !lastDone && sL.length >= 4 && sL.length < sO.length && run {
+                      val bs = (0 until sL.length - 1).map { i -> sL.substring(i, i + 2) }
+                      bs.count { b -> sO.contains(b) } * 10 >= bs.size * 8
+                  }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
-                      levDist(sL, sO.take(sL.length)) <= tol
+                      (levDist(sL, sO.take(sL.length)) <= tol || partOf)
                   if (last != null && !grown && last.zh != "…" && sameSentence(orig, last.orig)) {
                       // 同一句重新辨識只差一兩個字:保留已經翻好的,不要讓譯文跳來跳去
                       return
@@ -4050,12 +4075,30 @@ jobs:
                           settleCrop = crop
                           if (!settlePosted) {
                               settlePosted = true
-                              ui.postDelayed(settleRun, 700)
+                              ui.postDelayed(settleRun, 350)
                           }
                       } else {
                           crop.recycle()
                       }
                       return
+                  }
+                  // 畫面大幅改變 (按了下一句、整句消失):上一個畫面還沒辨識的最後一張,先排進辨識佇列,不能丟掉
+                  val bigChange = prev == null || prev.size != sig.size || sigDiff(prev, sig) > 120
+                  if (bigChange && !lastWasSpell && helpBoxRect == null) {
+                      val oldS = settleCrop
+                      val old = oldS ?: latestCrop
+                      if (old != null) {
+                          if (oldS != null) {
+                              latestCrop?.recycle()
+                              settleCrop = null
+                          } else {
+                              // latestCrop 就是 old
+                          }
+                          latestCrop = null
+                          autoQueue.addLast(Pair(old, latestTop))
+                          while (autoQueue.size > 4) autoQueue.removeFirst().first.recycle()
+                          ui.post { drainAuto() }
+                      }
                   }
                   settleDone = false
                   ui.removeCallbacks(settleRun)
@@ -4492,6 +4535,18 @@ jobs:
                   val terms = ArrayList<String>()
                   val pre = SpellGuide.replaceNames(applicationContext, jp, terms)
                   if (terms.isEmpty()) return translateText(tr, pre, engine)
+                  // 「(前面說明)魔法名の○○バージョン。」這種固定句型,直接組句,不交給翻譯引擎重排
+                  val pm = Regex("^(.*?)W([0-9]+)Wの(.+?)バ[ー一ｰ-]?ジョン[。.]?$").find(pre.replace(" ", ""))
+                  if (pm != null) {
+                      val n = pm.groupValues[2].toIntOrNull() ?: 0
+                      if (n in 1..terms.size) {
+                          val head = pm.groupValues[1]
+                          val mid = pm.groupValues[3]
+                          val hz = if (head.isBlank()) "" else translateText(tr, head, engine).trimEnd('。', '.', ' ') + "。"
+                          val mz = if (mid == "強化") "強化" else translateText(tr, mid, engine).trimEnd('。', '.', ' ')
+                          return hz + terms[n - 1] + "的" + mz + "版。"
+                      }
+                  }
                   val z = translateText(tr, pre, engine)
                   val seen = HashSet<Int>()
                   val out = Regex("[Ww]\\s*([0-9]+)\\s*[Ww]").replace(z) { m ->
