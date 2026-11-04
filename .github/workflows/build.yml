@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.5"
+                  versionName = "3.6"
               }
 
               buildTypes {
@@ -1575,7 +1575,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.5 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.6 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3525,8 +3525,15 @@ jobs:
                       } catch (e: Exception) {
                           looksMenu = false
                       }
-                      if (!looksMenu) {
-                          ui.post { hideHelpBox() }
+                      if (looksMenu) {
+                          // 遊戲的魔法選單 / HELP 還在,魔法翻譯欄就繼續留著
+                          ui.post { lastSpellOk = SystemClock.uptimeMillis() }
+                      } else {
+                          // 遊戲的魔法選單已經完全關掉了,說明框和魔法翻譯欄才一起收起來
+                          ui.post {
+                              hideHelpBox()
+                              if (lastWasSpell) hideOverlay()
+                          }
                           if (engine == "aiv" && !auto) return runAiv()
                           val cut = regionRows(readMetrics()[1])[0] - topOffset
                           if (cut > 0 && cut < src.height - 40) {
@@ -4007,7 +4014,8 @@ jobs:
                               } else if (autoOn()) {
                                   // 對話框消失了,譯文先留著讓你看完,20 秒後自動收起
                                   ui.removeCallbacks(emptyHide)
-                                  ui.postDelayed(emptyHide, if (lastWasSpell) 300L else 20000L)
+                                  // 魔法選單還開著的時候 (例如被 HELP 蓋住一半) 不收;選單關了由上面的偵測收起來
+                                  if (!lastWasSpell) ui.postDelayed(emptyHide, 20000L)
                               } else {
                                   hideOverlay()
                               }
