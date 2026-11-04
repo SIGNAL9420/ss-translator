@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.13"
+                  versionName = "3.14"
               }
 
               buildTypes {
@@ -376,6 +376,15 @@ jobs:
           # 日常用語
           捨てゴマ=棄子
           捨て駒=棄子
+
+          # --- HELP 說明常用句型 ---
+          強化バージョン=強化版
+          指定位置発動バージョン=指定位置發動版
+          １カ所集中攻撃バージョン=單點集中攻擊版
+          1カ所集中攻撃バージョン=單點集中攻擊版
+          最強の黒魔法=最強的黑魔法
+          ユニット=單位
+          <ユ二ット=ユニット
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -1579,7 +1588,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.13 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.14 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2377,9 +2386,12 @@ jobs:
                   val mine = kata + variant
                   var best: Spell? = null
                   var bestScore = 0f
+                  // 名稱後面還有多出來的字 (被認錯的 S/C/B/F/N) → 同分時優先選有變化版字母的魔法
+                  val hasTrail = t.any { c -> c !in '゠'..'ヿ' && !c.isWhitespace() && c != '・' }
                   for (sp in load(ctx)) {
                       val k = sp.key
-                      val score = 1f - lev(mine, k).toFloat() / maxOf(mine.length, k.length)
+                      val kv = k.last() in "SCBFN"
+                      val score = 1f - lev(mine, k).toFloat() / maxOf(mine.length, k.length) + (if (kv == hasTrail) 0.001f else 0f)
                       if (score > bestScore) {
                           bestScore = score
                           best = sp
@@ -2483,7 +2495,12 @@ jobs:
               private var nameRx: List<Pair<Regex, String>>? = null
 
               /** 任何要翻譯的日文裡出現的魔法名稱 (有沒有中間的「・」都算) 先換成固定的台灣動畫譯名,再交給翻譯 */
-              fun replaceNames(ctx: Context, text: String): String {
+              fun replaceNames(ctx: Context, text: String, terms: MutableList<String>? = null): String {
+                  fun put(n: String): String {
+                      if (terms == null) return n
+                      terms.add(n)
+                      return "W" + terms.size + "W"
+                  }
                   var rx = nameRx
                   if (rx == null) {
                       val l = ArrayList<Pair<Regex, String>>()
@@ -2497,12 +2514,12 @@ jobs:
                   }
                   var t = text
                   for ((r, n) in rx) {
-                      if (r.containsMatchIn(t)) t = r.replace(t, n)
+                      if (r.containsMatchIn(t)) t = r.replace(t) { put(n) }
                   }
                   // 辨識有錯字時用相似度找魔法名 (含結尾 S/C/B/F/N)
                   t = Regex("[゠-ヿ][゠-ヿ・·\\s]{3,}[SCBFNOE58]?").replace(t) { m ->
                       val sp = match(ctx, m.value, 0.75f)
-                      if (sp != null) sp.name else m.value
+                      if (sp != null) put(sp.name) else m.value
                   }
                   return t
               }
@@ -3105,6 +3122,23 @@ jobs:
               private var lastAutoTs = 0L
               private var curSig: IntArray? = null
               private var lastAcceptAt = 0L
+              private var settleDone = true
+              private var settlePosted = false
+              private var settleCrop: Bitmap? = null
+              private val settleRun = Runnable {
+                  settlePosted = false
+                  settleDone = true
+                  val c = settleCrop
+                  settleCrop = null
+                  if (c != null && autoOn() && !paused) {
+                      latestCrop?.recycle()
+                      latestCrop = c
+                      ui.removeCallbacks(stableRun)
+                      runAuto()
+                  } else {
+                      c?.recycle()
+                  }
+              }
               private var latestCrop: Bitmap? = null
               private var latestTop = 0
               private var autoBusy = false
@@ -3718,7 +3752,7 @@ jobs:
                               try {
                                   // 魔法名稱用固定譯名,效果說明照畫面內容翻譯
                                   val sh = SpellGuide.splitHelp(applicationContext, helpJp)
-                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateText(tr, SpellGuide.replaceNames(applicationContext, sh.second), engine) else translateText(tr, SpellGuide.replaceNames(applicationContext, helpJp), engine)
+                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateHelpPart(tr, sh.second, engine) else translateHelpPart(tr, helpJp, engine)
                                   if (z.isNotBlank()) {
                                       helpZh = z
                                       lastHelpJp = helpJp
@@ -3803,6 +3837,9 @@ jobs:
                   }
 
                   if (helpZh != null) return emptyList()
+                  // 戰鬥指令畫面 (PUSH R1/2、攻撃設定、ユニットをえらんでね…):這些是遊戲介面,不是對話,不翻
+                  if (auto && !menuFrame && Regex("PUSH|R1/2|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
+                          .containsMatchIn(lastRaw.replace(" ", "").replace("　", ""))) return emptyList()
                   if (engine == "aiv" && !auto) return runAiv()
 
                   val out = ArrayList<ResultView.Item>()
@@ -3849,8 +3886,13 @@ jobs:
                   val nO = orig.replace(" ", "").replace("　", "")
                   val nL = last?.orig?.replace(" ", "")?.replace("　", "") ?: ""
                   // 逐字顯示的對話:上一筆只是這句的開頭 (中間有一兩個字辨識不同也算),就直接換成完整的這一句
-                  val grown = last != null && nL.isNotEmpty() && nL.length < nO.length &&
-                      levDist(nL, nO.substring(0, nL.length)) <= maxOf(1, nL.length / 4)
+                  val sL = nL.filter { c -> c.isLetterOrDigit() }
+                  val sO = nO.filter { c -> c.isLetterOrDigit() }
+                  // 上一筆沒有句尾標點 = 還沒講完的半句,容許多幾個字辨識不同
+                  val lastDone = nL.isNotEmpty() && nL.last() in "。！？!?」』♪…~～"
+                  val tol = if (lastDone) maxOf(1, sL.length / 4) else maxOf(2, sL.length / 3)
+                  val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
+                      levDist(sL, sO.take(sL.length)) <= tol
                   if (last != null && !grown && last.zh != "…" && sameSentence(orig, last.orig)) {
                       // 同一句重新辨識只差一兩個字:保留已經翻好的,不要讓譯文跳來跳去
                       return
@@ -4002,9 +4044,24 @@ jobs:
                   val sig = signature(crop)
                   val prev = curSig
                   if (prev != null && prev.size == sig.size && sigDiff(prev, sig).let { d -> d == 0 || (d <= 6 && System.currentTimeMillis() - lastAcceptAt < 1500L) }) {
-                      crop.recycle()
+                      // 畫面幾乎沒變:留住最新一張,停止變動 0.7 秒後再完整辨識一次,確保逐字出現的最後一個字不會漏掉
+                      if (!settleDone) {
+                          settleCrop?.recycle()
+                          settleCrop = crop
+                          if (!settlePosted) {
+                              settlePosted = true
+                              ui.postDelayed(settleRun, 700)
+                          }
+                      } else {
+                          crop.recycle()
+                      }
                       return
                   }
+                  settleDone = false
+                  ui.removeCallbacks(settleRun)
+                  settlePosted = false
+                  settleCrop?.recycle()
+                  settleCrop = null
                   lastAcceptAt = System.currentTimeMillis()
                   curSig = sig
                   latestCrop?.recycle()
@@ -4428,6 +4485,26 @@ jobs:
                       return parts.joinToString("") { x -> translateOne(tr, x, engine) }
                   }
                   return translateOne(tr, jp, engine)
+              }
+
+              // HELP 說明:魔法名稱先換成暗號,翻完再換回固定譯名,避免被翻成羅馬拼音或怪字
+              private fun translateHelpPart(tr: Translator, jp: String, engine: String): String {
+                  val terms = ArrayList<String>()
+                  val pre = SpellGuide.replaceNames(applicationContext, jp, terms)
+                  if (terms.isEmpty()) return translateText(tr, pre, engine)
+                  val z = translateText(tr, pre, engine)
+                  val seen = HashSet<Int>()
+                  val out = Regex("[Ww]\\s*([0-9]+)\\s*[Ww]").replace(z) { m ->
+                      val n = m.groupValues[1].toIntOrNull() ?: 0
+                      if (n in 1..terms.size) {
+                          seen.add(n)
+                          terms[n - 1]
+                      } else {
+                          m.value
+                      }
+                  }
+                  if (seen.size == terms.size) return out
+                  return translateText(tr, SpellGuide.replaceNames(applicationContext, jp), engine)
               }
 
               private fun translateOne(tr: Translator, jp: String, engine: String): String {
