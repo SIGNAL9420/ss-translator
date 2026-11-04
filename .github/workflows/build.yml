@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.12"
+                  versionName = "3.13"
               }
 
               buildTypes {
@@ -1579,7 +1579,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.12 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.13 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1592,6 +1592,9 @@ jobs:
                       "• 譯文框:拖曳移動,右下角縮放,右上角 ✕ 關閉並暫停\n" +
                       "• 智慧模式:Google 先翻,程式檢查到怪句子就換 AI,再失敗用離線\n" +
                       "• 遊戲內建華曜攻略本,遇到角色、魔法名會提示,並會猜你玩到第幾章、提示該看哪一頁\n" +
+                      "• 對話翻譯:日文一出現就先記下整句,翻譯在後台一句一句排隊完成,你連按好幾句也會全部翻完。翻好的句子由上到下排在譯文框裡,可上下滑動看前面的句子\n" +
+                      "• 對話結束後譯文框不會自己消失,要等你按右上角 ✕ 才關閉\n" +
+                      "• 魔法選單:顯示該頁魔法的固定譯名;HELP 說明另外用自己的框,可在下方分別調整字體大小\n" +
                       "• 用線上或 AI 翻譯時,辨識到的文字會傳到對應服務"
                   intro.setPadding(0, dp(8), 0, dp(12))
                   root.addView(intro)
@@ -1615,7 +1618,7 @@ jobs:
                   )
                   root.addView(
                       makeRadios(
-                          "翻譯方式", "engine", "both",
+                          "翻譯方式", "engine", "smart",
                           listOf(
                               Pair("smart", "智慧模式 (推薦):Google 先翻,檢查到怪句子立刻換 AI;AI 失敗再用離線"),
                               Pair("both", "線上優先 (Google 翻譯),失敗時改用離線"),
@@ -2352,13 +2355,15 @@ jobs:
                   line.replace(Regex("^[^゠-ヿ]{1,2}(?=[゠-ヿ]{2})"), "")
 
               /** 這一行如果是魔法名稱就回傳對應魔法 (容許辨識錯一兩個字),否則 null */
-              fun match(ctx: Context, line: String): Spell? {
+              fun match(ctx: Context, line: String, min: Float = 0.62f): Spell? {
                   val t = stripIcon(norm(line))
                   if (t.length < 4) return null
                   // 魔法名稱都是片假名;結尾單獨的 S、C、B、F、N 是同名魔法的變化版
                   val kata = t.filter { c -> c in '゠'..'ヿ' }
                   if (kata.length < 4 || kata.length * 10 < t.length * 6) return null
-                  val last0 = t.last()
+                  val lastK = t.indexOfLast { c -> c in '゠'..'ヿ' }
+                  val tail = t.substring(lastK + 1).filter { c -> !c.isWhitespace() && c != '・' }
+                  val last0 = if (tail.isNotEmpty()) tail.first() else ' '
                   // 結尾的變化版字母常被辨識成長得像的字 (C→O/〇/0、B→8、F→E、S→5)
                   val last = when (last0) {
                       'O', '0', '〇', '○', 'Ｏ', 'ｃ', 'Ｃ', 'c' -> 'C'
@@ -2368,7 +2373,7 @@ jobs:
                       'Ｎ', 'n' -> 'N'
                       else -> last0
                   }
-                  val variant = if (t.length >= 2 && last in "SCBFN" && t[t.length - 2] in '゠'..'ヿ') last.toString() else ""
+                  val variant = if (last in "SCBFN") last.toString() else ""
                   val mine = kata + variant
                   var best: Spell? = null
                   var bestScore = 0f
@@ -2380,7 +2385,7 @@ jobs:
                           best = sp
                       }
                   }
-                  return if (bestScore >= 0.62f) best else null
+                  return if (bestScore >= min) best else null
               }
 
               private class Page(val who: String, val no: Int, val spells: List<Spell>)
@@ -2493,6 +2498,11 @@ jobs:
                   var t = text
                   for ((r, n) in rx) {
                       if (r.containsMatchIn(t)) t = r.replace(t, n)
+                  }
+                  // 辨識有錯字時用相似度找魔法名 (含結尾 S/C/B/F/N)
+                  t = Regex("[゠-ヿ][゠-ヿ・·\\s]{3,}[SCBFNOE58]?").replace(t) { m ->
+                      val sp = match(ctx, m.value, 0.75f)
+                      if (sp != null) sp.name else m.value
                   }
                   return t
               }
@@ -3094,6 +3104,7 @@ jobs:
               // ---- 自動翻譯用
               private var lastAutoTs = 0L
               private var curSig: IntArray? = null
+              private var lastAcceptAt = 0L
               private var latestCrop: Bitmap? = null
               private var latestTop = 0
               private var autoBusy = false
@@ -3500,7 +3511,7 @@ jobs:
                   val tStart = SystemClock.uptimeMillis()
                   lastRegion = Rect(0, topOffset, src.width, topOffset + src.height)
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
-                  val engine = prefs.getString("engine", "both") ?: "both"
+                  val engine = prefs.getString("engine", "smart") ?: "smart"
 
                   val tr = translator ?: throw IllegalStateException("translator")
                   val rec = recognizer ?: throw IllegalStateException("recognizer")
@@ -3701,7 +3712,7 @@ jobs:
                           val fixed = SpellGuide.helpText(applicationContext, helpJp)
                           if (fixed != null) {
                               helpZh = fixed
-                          } else if (helpJp == lastHelpJp && lastHelpZh.isNotEmpty()) {
+                          } else if (lastHelpZh.isNotEmpty() && (helpJp == lastHelpJp || (lastHelpJp.isNotEmpty() && levDist(helpJp, lastHelpJp) <= maxOf(2, maxOf(helpJp.length, lastHelpJp.length) / 5)))) {
                               helpZh = lastHelpZh
                           } else {
                               try {
@@ -3990,10 +4001,11 @@ jobs:
                   }
                   val sig = signature(crop)
                   val prev = curSig
-                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig) <= (if (doneJp.isNotEmpty() && !doneJp.startsWith("\u0001") && helpBoxRect == null) 30 else 6)) {
+                  if (prev != null && prev.size == sig.size && sigDiff(prev, sig).let { d -> d == 0 || (d <= 6 && System.currentTimeMillis() - lastAcceptAt < 1500L) }) {
                       crop.recycle()
                       return
                   }
+                  lastAcceptAt = System.currentTimeMillis()
                   curSig = sig
                   latestCrop?.recycle()
                   latestCrop = crop
@@ -4006,34 +4018,66 @@ jobs:
               // 背景翻譯:整句日文已經記在譯文框裡,翻好再換成中文;按太快的句子也會一句一句翻完
               private val trWorker = Executors.newSingleThreadExecutor()
 
+              private var trPending = 0
+
+              // 對話結束後,等排隊中的翻譯都完成;完成後譯文框保留,由使用者按 ✕ 關閉
+              private val hideWhenDone = object : Runnable {
+                  override fun run() {
+                      if (trPending > 0 || history.any { h -> h.zh == "…" }) {
+                          ui.postDelayed(this, 500)
+                      }
+                      // 翻完之後譯文框一直留著,等你按 ✕ 才關閉
+                  }
+              }
+
               private fun scheduleTranslate(jp: String) {
+                  trPending++
                   ui.postDelayed({
                       // 句子還在逐字長出來的時候 (這一筆已經被更完整的取代) 就不翻
-                      if (history.none { h -> h.orig == jp && h.zh == "…" }) return@postDelayed
+                      if (history.none { h -> pendingMatch(h, jp) }) {
+                          trPending--
+                          return@postDelayed
+                      }
                       trWorker.execute {
-                          val tr = translator ?: return@execute
-                          val eng0 = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("engine", "both") ?: "both"
+                          val tr = translator
+                          if (tr == null) {
+                              ui.post { trPending-- }
+                              return@execute
+                          }
+                          val eng0 = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("engine", "smart") ?: "smart"
                           val z = try {
                               translateText(tr, jp, if (eng0 == "aiv") "ai" else eng0)
                           } catch (e: Exception) {
                               "(翻譯失敗:" + (e.message ?: "未知錯誤").take(40) + ")"
                           }
-                          ui.post { applyTranslation(jp, z) }
+                          ui.post {
+                              trPending--
+                              applyTranslation(jp, z)
+                          }
                       }
                   }, 250)
+              }
+
+              // 等待翻譯的那一筆:原文相同,或只是辨識差一兩個字 (長度差不多)
+              private fun pendingMatch(h: Hist, jp: String): Boolean {
+                  if (h.zh != "…") return false
+                  if (h.orig == jp) return true
+                  val a = h.orig.replace(" ", "")
+                  val b = jp.replace(" ", "")
+                  return kotlin.math.abs(a.length - b.length) <= maxOf(1, b.length / 8) && sameSentence(h.orig, jp)
               }
 
               private fun applyTranslation(jp: String, z: String) {
                   var changed = false
                   for (h in history) {
-                      if (h.orig == jp && h.zh == "…") {
+                      if (pendingMatch(h, jp)) {
                           h.zh = z
                           changed = true
                       }
                   }
                   val items = shownItems
                   if (items != null) {
-                      shownItems = items.map { x -> if (x.orig == jp && x.text == "…") ResultView.Item(x.rect, z, x.lineH, x.orig) else x }
+                      shownItems = items.map { x -> if (x.text == "…" && (x.orig == jp || sameSentence(x.orig, jp))) ResultView.Item(x.rect, z, x.lineH, x.orig) else x }
                   }
                   if (changed && autoOn() && !paused && !lastWasSpell) renderHistory()
               }
@@ -4094,10 +4138,17 @@ jobs:
                                   ui.removeCallbacks(emptyHide)
                                   // 魔法選單還開著的時候 (例如被 HELP 蓋住一半) 不收;選單關了由上面的偵測收起來
                                   if (!lastWasSpell) ui.postDelayed(emptyHide, 20000L)
+                              } else if (history.isNotEmpty()) {
+                                  // 對話結束了:後台還在翻的句子要翻完,框才收起來
+                                  ui.removeCallbacks(emptyHide)
+                                  ui.removeCallbacks(hideWhenDone)
+                                  ui.post(hideWhenDone)
                               } else {
                                   hideOverlay()
                               }
                           } else {
+                              ui.removeCallbacks(hideWhenDone)
+                              ui.removeCallbacks(emptyHide)
                               val jpNow = list.joinToString("") { x -> x.orig }
                               if (jpNow != doneJp) {
                                   val shownList = list.map { x -> if (x.text.isEmpty()) ResultView.Item(x.rect, "…", x.lineH, x.orig) else x }
@@ -4706,7 +4757,7 @@ jobs:
                       box.addView(tv)
                   }
 
-                  fun engineName(): String = when (prefs.getString("engine", "both")) {
+                  fun engineName(): String = when (prefs.getString("engine", "smart")) {
                       "online" -> "只用線上"
                       "offline" -> "只用離線"
                       "smart" -> "智慧 (Google 先翻,怪才換 AI)"
@@ -4730,7 +4781,7 @@ jobs:
                       curSig = null
                   })
                   addRow({ "翻譯方式:" + engineName() }, {
-                      val next = when (prefs.getString("engine", "both")) {
+                      val next = when (prefs.getString("engine", "smart")) {
                           "both" -> "online"
                           "online" -> "smart"
                           "smart" -> "ai"
