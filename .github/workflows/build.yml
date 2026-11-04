@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.15"
+                  versionName = "3.16"
               }
 
               buildTypes {
@@ -1593,7 +1593,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.15 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.16 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1607,7 +1607,7 @@ jobs:
                       "• 智慧模式:Google 先翻,程式檢查到怪句子就換 AI,再失敗用離線\n" +
                       "• 遊戲內建華曜攻略本,遇到角色、魔法名會提示,並會猜你玩到第幾章、提示該看哪一頁\n" +
                       "• 對話翻譯:日文一出現就先記下整句,翻譯在後台一句一句排隊完成,你連按好幾句也會全部翻完。翻好的句子由上到下排在譯文框裡,可上下滑動看前面的句子\n" +
-                      "• 對話結束後譯文框不會自己消失,要等你按右上角 ✕ 才關閉\n" +
+                      "• 對話結束、全部翻完後,譯文框會再停 8 秒讓你看完才自動收起;也可以隨時按右上角 ✕ 關閉\n" +
                       "• 魔法選單:顯示該頁魔法的固定譯名;HELP 說明另外用自己的框,可在下方分別調整字體大小\n" +
                       "• 用線上或 AI 翻譯時,辨識到的文字會傳到對應服務"
                   intro.setPadding(0, dp(8), 0, dp(12))
@@ -3378,6 +3378,7 @@ jobs:
                       v.invalidate()
                   }
                   history.clear()
+                  hideQueued = false
                   ui.removeCallbacks(emptyHide)
                   hideSubtitle()
                   hideGuideHint()
@@ -3858,8 +3859,9 @@ jobs:
 
                   if (helpZh != null) return emptyList()
                   // 戰鬥指令畫面 (PUSH R1/2、攻撃設定、ユニットをえらんでね…):這些是遊戲介面,不是對話,不翻
-                  if (auto && !menuFrame && Regex("PUSH|R1/2|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
-                          .containsMatchIn(lastRaw.replace(" ", "").replace("　", ""))) return emptyList()
+                  // (魔法選單偵測到了、卻沒有清單可顯示的畫面,剩下的字也一律不當對話翻)
+                  if (auto && (menuFrame || Regex("PUSH|R1/2|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
+                          .containsMatchIn(lastRaw.replace(" ", "").replace("　", "")))) return emptyList()
                   if (engine == "aiv" && !auto) return runAiv()
 
                   val out = ArrayList<ResultView.Item>()
@@ -3897,7 +3899,11 @@ jobs:
               private class Hist(var orig: String, var zh: String)
 
               private val history = ArrayList<Hist>()
-              private val emptyHide = Runnable { hideOverlay() }
+              private var hideQueued = false
+              private val emptyHide = Runnable {
+                  hideQueued = false
+                  hideOverlay()
+              }
 
               private fun pushHistory(list: List<ResultView.Item>) {
                   val orig = list.joinToString(" ") { x -> x.orig }
@@ -4125,12 +4131,17 @@ jobs:
                   override fun run() {
                       if (trPending > 0 || history.any { h -> h.zh == "…" }) {
                           ui.postDelayed(this, 500)
+                      } else {
+                          // 全部翻完、對話也結束了:留 8 秒給你看完再自動收起 (中途又有新對話就取消)
+                          ui.postDelayed(emptyHide, 8000L)
                       }
-                      // 翻完之後譯文框一直留著,等你按 ✕ 才關閉
                   }
               }
 
-              private fun scheduleTranslate(jp: String) {
+              // 太短又沒有句尾標點的字 (逐字出現到一半) 先不翻,避免翻出怪字;對話結束時才補翻
+              private fun scheduleTranslate(jp: String, force: Boolean = false) {
+                  val jc = jp.replace(" ", "")
+                  if (!force && jc.length < 6 && jc.isNotEmpty() && jc.last() !in "。！？!?」』♪…~～") return
                   trPending++
                   ui.postDelayed({
                       // 句子還在逐字長出來的時候 (這一筆已經被更完整的取代) 就不翻
@@ -4165,6 +4176,12 @@ jobs:
                   val a = h.orig.replace(" ", "")
                   val b = jp.replace(" ", "")
                   return kotlin.math.abs(a.length - b.length) <= maxOf(1, b.length / 8) && sameSentence(h.orig, jp)
+              }
+
+              private fun flushDeferred() {
+                  for (h in ArrayList(history)) {
+                      if (h.zh == "…") scheduleTranslate(h.orig, true)
+                  }
               }
 
               private fun applyTranslation(jp: String, z: String) {
@@ -4240,15 +4257,18 @@ jobs:
                                   if (!lastWasSpell) ui.postDelayed(emptyHide, 20000L)
                               } else if (history.isNotEmpty()) {
                                   // 對話結束了:後台還在翻的句子要翻完,框才收起來
-                                  ui.removeCallbacks(emptyHide)
-                                  ui.removeCallbacks(hideWhenDone)
-                                  ui.post(hideWhenDone)
+                                  flushDeferred()
+                                  if (!hideQueued) {
+                                      hideQueued = true
+                                      ui.post(hideWhenDone)
+                                  }
                               } else {
                                   hideOverlay()
                               }
                           } else {
                               ui.removeCallbacks(hideWhenDone)
                               ui.removeCallbacks(emptyHide)
+                              hideQueued = false
                               val jpNow = list.joinToString("") { x -> x.orig }
                               if (jpNow != doneJp) {
                                   val shownList = list.map { x -> if (x.text.isEmpty()) ResultView.Item(x.rect, "…", x.lineH, x.orig) else x }
@@ -5111,8 +5131,12 @@ jobs:
                   // 英文字母雜訊去掉,但遊戲裡真的會出現的 HP、MP 等保留
                   val before = s
                   s = Regex("[A-Za-z]+").replace(s) { m ->
-                      val keepVariant = m.value.length == 1 && m.value in "SCBFN" && m.range.first > 0 &&
-                          m.range.last == before.length - 1 && before[m.range.first - 1] in '゠'..'ヿ'
+                      // 魔法名後面的變化版字母:在行尾,或後面接著那排點點 (HELP 標題「ドラグ・スレイブF····」)
+                      val prevC = if (m.range.first > 0) before[m.range.first - 1] else ' '
+                      val afterS = before.substring(m.range.last + 1)
+                      val atEnd = afterS.isEmpty() || Regex("^[·•・.．…‥]{2,}").containsMatchIn(afterS)
+                      val keepVariant = m.value.length == 1 && m.value in "SCBFNOE" && atEnd &&
+                          (prevC in '゠'..'ヿ' || (prevC in "-−ー" && m.range.first > 1 && before[m.range.first - 2] in '゠'..'ヿ'))
                       if (keepVariant || m.value.uppercase() in setOf("HP", "MP", "AT", "OK", "DATE", "STEP", "HIT", "PAGE")) m.value else ""
                   }
                   // 只去掉「雜點記號後面接的數字」(像 なによ·1),不動句中或句首的數字 (價格、數量)
@@ -5250,7 +5274,7 @@ jobs:
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val isSpell = list.size == 1 && list[0].orig.startsWith("\u0001")
                   if (!isSpell) showGuideHint(list.joinToString(" ") { x -> x.orig + " " + x.text })
-                  if (autoOn() && isSpell) {
+                  if (isSpell) {
                       // 魔法清單:一次全部列出,不進對話歷史;右上角的攻略提示先收起來,免得擋到清單
                       val o = overlay
                       if (o != null) {
@@ -5267,7 +5291,7 @@ jobs:
                       return
                   }
                   lastWasSpell = false
-                  if (autoOn()) {
+                  if (true) {
                       // 自動模式:用可以移動、調整大小的譯文框,不蓋住原文
                       val o = overlay
                       if (o != null) {
@@ -5277,8 +5301,13 @@ jobs:
                       }
                       if (list.isNotEmpty()) {
                           ui.removeCallbacks(emptyHide)
-                          pushHistory(list)
-                          renderHistory()
+                          if (autoOn()) {
+                              pushHistory(list)
+                              renderHistory()
+                          } else {
+                              // 手動翻譯:也用同一個譯文框、同一組字體大小設定
+                              showSubtitle(list.joinToString("\n") { x -> x.text }, list.joinToString(" ") { x -> x.orig })
+                          }
                       }
                       return
                   }
