@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.9"
+                  versionName = "3.11"
               }
 
               buildTypes {
@@ -372,6 +372,10 @@ jobs:
 
           # HELP 說明裡的「ヘックス」是地圖的格子
           <ヘックス=マス
+
+          # 日常用語
+          捨てゴマ=棄子
+          捨て駒=棄子
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -1575,7 +1579,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.9 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.11 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3649,6 +3653,10 @@ jobs:
                   lastRaw = raw.toString()
                   lastOcrMs = SystemClock.uptimeMillis() - tStart
                   var blocks = pickBestRows(cands)
+                  // 戰鬥畫面下方的角色數值欄 (リナ 135/135 ...):整欄都是名字和數字,不是對話,不要翻
+                  if (!menuFrame && Regex("[0-9]{2,3}\\s*/\\s*[0-9]{2,3}").findAll(lastRaw).count() >= 2) {
+                      blocks = ArrayList(blocks.filter { x -> x.text.length >= 5 && SpellGuide.charOf(x.text) == null })
+                  }
 
                   // HELP 說明:標題列下面那幾行是說明文字,單獨翻譯,顯示在另一個說明框 (黃框位置),跟 HELP 一起開關
                   var helpZh: String? = null
@@ -3738,9 +3746,12 @@ jobs:
                   }
                   val pageNo: Int? = if (rawPage != null) rawPage else if (nowMs - spellPageAt < 20000) spellPage else null
                   // 知道角色和頁碼就直接用那一頁的固定清單,不管這一幀認得出幾個魔法名稱
-                  val fixedPage = if (spellMode && cur != null && pageNo != null) SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo) else null
-                  if (spellBanner && spellHits.isEmpty() && fixedPage == null) return emptyList()
-                  if (fixedPage != null || spellHits.size >= 2 || (spellHits.size == 1 && (spellMode || spellBanner))) {
+                  val fixedPage = if (spellMode && menuFrame && cur != null && pageNo != null) SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo) else null
+                  // 魔法選單模式開著的時候,一定要先確認畫面上真的有遊戲的魔法選單 (PAGE / HELP / 狀態列),
+                  // 戰鬥畫面右上角的招式名稱、對話裡的魔法名稱都不會再讓魔法翻譯欄跑出來
+                  val spellAllowed = !spellMode || menuFrame
+                  if (spellAllowed && spellBanner && spellHits.isEmpty() && fixedPage == null) return emptyList()
+                  if (spellAllowed && (fixedPage != null || spellHits.size >= 2 || (spellHits.size == 1 && (spellMode || spellBanner)))) {
                       val rect = Rect(0, topOffset, src.width, topOffset + src.height)
                       val page = fixedPage ?: SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
@@ -3798,10 +3809,9 @@ jobs:
                   val last = history.lastOrNull()
                   val nO = orig.replace(" ", "").replace("　", "")
                   val nL = last?.orig?.replace(" ", "")?.replace("　", "") ?: ""
-                  var cp = 0
-                  while (cp < nO.length && cp < nL.length && nO[cp] == nL[cp]) cp++
-                  // 逐字顯示的對話:上一筆只是這句的開頭,就直接換成完整的這句
-                  val grown = last != null && nL.isNotEmpty() && nL.length < nO.length && cp >= (nL.length * 4 + 4) / 5
+                  // 逐字顯示的對話:上一筆只是這句的開頭 (中間有一兩個字辨識不同也算),就直接換成完整的這一句
+                  val grown = last != null && nL.isNotEmpty() && nL.length < nO.length &&
+                      levDist(nL, nO.substring(0, nL.length)) <= maxOf(1, nL.length / 4)
                   if (last != null && (grown || sameSentence(orig, last.orig))) {
                       last.orig = orig
                       last.zh = zh
@@ -3809,6 +3819,20 @@ jobs:
                       history.add(Hist(orig, zh))
                       while (history.size > 10) history.removeAt(0)
                   }
+              }
+
+              private fun levDist(a: String, b: String): Int {
+                  var prev = IntArray(b.length + 1) { j -> j }
+                  for (i in 1..a.length) {
+                      val cur = IntArray(b.length + 1)
+                      cur[0] = i
+                      for (j in 1..b.length) {
+                          val c = if (a[i - 1] == b[j - 1]) 0 else 1
+                          cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c)
+                      }
+                      prev = cur
+                  }
+                  return prev[b.length]
               }
 
               private fun renderHistory() {
