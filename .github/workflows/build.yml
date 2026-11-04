@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.11"
+                  versionName = "3.12"
               }
 
               buildTypes {
@@ -1579,7 +1579,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.11 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.12 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1617,10 +1617,10 @@ jobs:
                       makeRadios(
                           "翻譯方式", "engine", "both",
                           listOf(
-                              Pair("both", "線上優先,失敗時改用離線"),
+                              Pair("smart", "智慧模式 (推薦):Google 先翻,檢查到怪句子立刻換 AI;AI 失敗再用離線"),
+                              Pair("both", "線上優先 (Google 翻譯),失敗時改用離線"),
                               Pair("online", "只用線上 (Google 翻譯,直接輸出繁體)"),
                               Pair("offline", "只用離線 (不用網路,品質較差)"),
-                              Pair("smart", "智慧模式 (推薦):Google 先翻,檢查到怪句子立刻換 AI;AI 失敗再用離線"),
                               Pair("ai", "每句都用 AI 翻 (先辨識文字再交給 AI)"),
                               Pair("aiv", "每句都用 AI 看圖翻 (截圖給 AI,最準也最耗額度)")
                           ),
@@ -2358,7 +2358,16 @@ jobs:
                   // 魔法名稱都是片假名;結尾單獨的 S、C、B、F、N 是同名魔法的變化版
                   val kata = t.filter { c -> c in '゠'..'ヿ' }
                   if (kata.length < 4 || kata.length * 10 < t.length * 6) return null
-                  val last = t.last()
+                  val last0 = t.last()
+                  // 結尾的變化版字母常被辨識成長得像的字 (C→O/〇/0、B→8、F→E、S→5)
+                  val last = when (last0) {
+                      'O', '0', '〇', '○', 'Ｏ', 'ｃ', 'Ｃ', 'c' -> 'C'
+                      '8', 'Ｂ', 'ß' -> 'B'
+                      'E', 'Ｅ', 'Ｆ', 'f' -> 'F'
+                      '5', 'Ｓ', 's' -> 'S'
+                      'Ｎ', 'n' -> 'N'
+                      else -> last0
+                  }
                   val variant = if (t.length >= 2 && last in "SCBFN" && t[t.length - 2] in '゠'..'ヿ') last.toString() else ""
                   val mine = kata + variant
                   var best: Spell? = null
@@ -2410,6 +2419,13 @@ jobs:
                   "ゼルガディス" to "傑爾加帝斯", "ゼル" to "傑爾加帝斯", "シルフィール" to "希菲爾",
                   "ガウリイ" to "高里"
               )
+
+              /** 這一行除了角色名稱 (リナ、ナーガ、ガウリイ…) 之外沒有別的字,例如戰鬥畫面下方的數值欄 */
+              fun onlyNames(line: String): Boolean {
+                  var t = line.replace(" ", "").replace("　", "").replace("・", "")
+                  for (k in charNames.keys.sortedByDescending { x -> x.length }) t = t.replace(k, "")
+                  return t.length < 3
+              }
 
               /** 狀態欄上的角色名稱 (容許辨識錯一個字),不是角色名稱就回傳 null */
               fun charOf(line: String): String? {
@@ -3533,7 +3549,14 @@ jobs:
                       // 不是的話就只處理原本設定的範圍 (對話翻譯速度才不會被拖慢)
                       var looksMenu = false
                       try {
-                          val qt = Tasks.await(rec.process(InputImage.fromBitmap(src, 0)), 6, TimeUnit.SECONDS)
+                          // 平常 (沒有魔法選單) 用縮小一半的圖快速確認,選單開著時才用原圖仔細看,對話翻譯才快
+                          val menuActive = lastWasSpell || helpBoxRect != null
+                          val gateBmp = if (menuActive) src else Bitmap.createScaledBitmap(src, maxOf(1, src.width / 2), maxOf(1, src.height / 2), true)
+                          val qt = try {
+                              Tasks.await(rec.process(InputImage.fromBitmap(gateBmp, 0)), 6, TimeUnit.SECONDS)
+                          } finally {
+                              if (gateBmp !== src) gateBmp.recycle()
+                          }
                           val all = qt.text.uppercase()
                           if (all.contains("PAGE") || all.contains("HELP") || all.contains("STEP") || all.contains("HIT") || all.contains("えらんで") || all.contains("呪文")) looksMenu = true
                           if (!looksMenu) {
@@ -3554,6 +3577,8 @@ jobs:
                           ui.post { lastSpellOk = SystemClock.uptimeMillis() }
                       } else {
                           // 遊戲的魔法選單已經完全關掉了,說明框和魔法翻譯欄才一起收起來
+                          spellChar = null
+                          spellPage = 0
                           ui.post {
                               hideHelpBox()
                               if (lastWasSpell) hideOverlay()
@@ -3586,7 +3611,6 @@ jobs:
                   variants.add(Pair(enhance(src, 2f, 1.8f), 2f))
                   if (!menuFrame) {
                       // 魔法選單 / HELP 的字是白字或粉紅字,不需要反相和金色版本,少做兩個比較快
-                      variants.add(Pair(enhance(src, 2f, -1.8f), 2f))
                       variants.add(Pair(goldMask(src, 2f), 2f))
                   }
 
@@ -3654,8 +3678,12 @@ jobs:
                   lastOcrMs = SystemClock.uptimeMillis() - tStart
                   var blocks = pickBestRows(cands)
                   // 戰鬥畫面下方的角色數值欄 (リナ 135/135 ...):整欄都是名字和數字,不是對話,不要翻
-                  if (!menuFrame && Regex("[0-9]{2,3}\\s*/\\s*[0-9]{2,3}").findAll(lastRaw).count() >= 2) {
-                      blocks = ArrayList(blocks.filter { x -> x.text.length >= 5 && SpellGuide.charOf(x.text) == null })
+                  if (!menuFrame) {
+                      val nSlash = Regex("[0-9]{2,3}\\s*[/／]").findAll(lastRaw).count()
+                      val nNum = Regex("[0-9]{3}").findAll(lastRaw).count()
+                      if (nSlash >= 1 || nNum >= 4) {
+                          blocks = ArrayList(blocks.filter { x -> x.text.length >= 5 && !SpellGuide.onlyNames(x.text) })
+                      }
                   }
 
                   // HELP 說明:標題列下面那幾行是說明文字,單獨翻譯,顯示在另一個說明框 (黃框位置),跟 HELP 一起開關
@@ -3738,13 +3766,13 @@ jobs:
                       spellCharAt = nowMs
                   }
                   // 這一幀沒看到角色名稱時,沿用 20 秒內看到的 (HELP 蓋住選單時用)
-                  val cur = if (nowMs - spellCharAt < 20000) spellChar else null
+                  val cur = spellChar
                   val rawPage = pageNoRaw
                   if (rawPage != null) {
                       spellPage = rawPage
                       spellPageAt = nowMs
                   }
-                  val pageNo: Int? = if (rawPage != null) rawPage else if (nowMs - spellPageAt < 20000) spellPage else null
+                  val pageNo: Int? = if (rawPage != null) rawPage else if (spellPage > 0) spellPage else null
                   // 知道角色和頁碼就直接用那一頁的固定清單,不管這一幀認得出幾個魔法名稱
                   val fixedPage = if (spellMode && menuFrame && cur != null && pageNo != null) SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo) else null
                   // 魔法選單模式開著的時候,一定要先確認畫面上真的有遊戲的魔法選單 (PAGE / HELP / 狀態列),
@@ -3812,6 +3840,10 @@ jobs:
                   // 逐字顯示的對話:上一筆只是這句的開頭 (中間有一兩個字辨識不同也算),就直接換成完整的這一句
                   val grown = last != null && nL.isNotEmpty() && nL.length < nO.length &&
                       levDist(nL, nO.substring(0, nL.length)) <= maxOf(1, nL.length / 4)
+                  if (last != null && !grown && last.zh != "…" && sameSentence(orig, last.orig)) {
+                      // 同一句重新辨識只差一兩個字:保留已經翻好的,不要讓譯文跳來跳去
+                      return
+                  }
                   if (last != null && (grown || sameSentence(orig, last.orig))) {
                       last.orig = orig
                       last.zh = zh
