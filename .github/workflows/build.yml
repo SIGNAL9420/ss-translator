@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.3"
+                  versionName = "3.5"
               }
 
               buildTypes {
@@ -1575,7 +1575,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.3 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.5 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1602,6 +1602,8 @@ jobs:
                   root.addView(tip)
                   root.addView(makeSlider("上緣", "top", 18, cfg))
                   root.addView(makeSlider("下緣", "bot", 34, cfg))
+                  root.addView(makeSizeSlider("譯文字幕字體大小", "sub_sp", 18, 12, 36, cfg))
+                  root.addView(makeSizeSlider("HELP 說明字體大小", "help_sp", 18, 12, 36, cfg))
 
                   root.addView(
                       makeRadios(
@@ -1832,6 +1834,31 @@ jobs:
                       }.start()
                   })
                   box.addView(res)
+                  return box
+              }
+
+              private fun makeSizeSlider(label: String, key: String, def: Int, lo: Int, hi: Int, cfg: android.content.SharedPreferences): LinearLayout {
+                  val box = LinearLayout(this)
+                  box.orientation = LinearLayout.VERTICAL
+                  val tv = TextView(this)
+                  val sb = SeekBar(this)
+                  sb.max = hi - lo
+                  val cur = cfg.getInt(key, def)
+                  sb.progress = cur - lo
+                  tv.text = label + " " + cur
+                  tv.setPadding(0, dp(8), 0, 0)
+                  sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                      override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                          tv.text = label + " " + (p + lo)
+                          cfg.edit().putInt(key, p + lo).apply()
+                      }
+
+                      override fun onStartTrackingTouch(s: SeekBar?) {}
+
+                      override fun onStopTrackingTouch(s: SeekBar?) {}
+                  })
+                  box.addView(tv)
+                  box.addView(sb)
                   return box
               }
 
@@ -2576,14 +2603,15 @@ jobs:
 
                   val pad = dp(8f)
                   val inner = maxOf(1, (w - 2 * pad).toInt())
-                  val minSize = sp(16f)
+                  val baseSp = context.getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("sub_sp", 18).toFloat()
+                  val minSize = sp(baseSp)
                   val withOrig = showOrig && orig.isNotEmpty()
 
                   // 右上角留給 ✕ 按鈕,第一塊文字的寬度縮短,才不會被擋到
                   val reserve = dp(30f).toInt()
                   val zhW = if (withOrig) inner else maxOf(1, inner - reserve)
                   val orW = maxOf(1, inner - reserve)
-                  var size = sp(16f)
+                  var size = sp(baseSp)
                   var layout = makeLayout(textPaint, zh, size, zhW)
                   var oLayout: StaticLayout? = if (withOrig) makeLayout(origPaint, orig, maxOf(size * 0.55f, sp(10f)), orW) else null
                   while (layout.height + (oLayout?.height ?: 0) + 2 * pad > h && size > minSize) {
@@ -2896,13 +2924,23 @@ jobs:
               @Volatile
               private var lastWasSpell = false
 
-              private fun restoreSubtitle() {
-                  val sh = subShift ?: return
-                  val sl = subtitleLp
-                  val sv = subtitle
-                  subShift = null
-                  if (sl != null && sv != null) {
-                      sl.y = sh[0]
+              private var subBaseY: Int? = null
+              @Volatile
+              private var lastHelpOk = 0L
+              @Volatile
+              private var lastSpellOk = 0L
+
+              // 說明框和魔法清單 (字幕框) 上下排,絕對不互相蓋住:說明框在上面,字幕框被擠到說明框下面
+              private fun layoutOverlays() {
+                  val sl = subtitleLp ?: return
+                  val sv = subtitle ?: return
+                  val base = subBaseY ?: sl.y
+                  subBaseY = base
+                  val hb = if (helpView?.visibility == View.VISIBLE) helpBoxRect else null
+                  var ny = base
+                  if (hb != null && base < hb.bottom + 4 && base + sl.height > hb.top) ny = hb.bottom + 4
+                  if (ny != sl.y) {
+                      sl.y = ny
                       try {
                           wm.updateViewLayout(sv, sl)
                       } catch (e: Exception) {
@@ -2912,30 +2950,27 @@ jobs:
 
               private fun showHelpBox(zh: String, r0: Rect) {
                   helpMiss = 0
-                  var r = r0
-                  val sl = subtitleLp
-                  val sv = subtitle
-                  if (sl != null && sv != null && sv.visibility == View.VISIBLE) {
-                      if (sl.y < r.bottom && sl.y + sl.height > r.top) {
-                          // 兩個框碰到了:說明框在上面,魔法清單往下移到說明框下面
-                          if (subShift == null) subShift = intArrayOf(sl.y)
-                          sl.y = r.bottom + 4
-                          try {
-                              wm.updateViewLayout(sv, sl)
-                          } catch (e: Exception) {
-                          }
-                      } else {
-                          restoreSubtitle()
-                      }
-                  }
+                  val wmgr = getSystemService(Context.WINDOW_SERVICE) as WindowManager
                   var v = helpView
+                  val fresh = v == null
                   if (v == null) {
                       v = TextView(this)
                       v.setTextColor(Color.WHITE)
                       v.setBackgroundColor(0xE6101820.toInt())
                       v.setPadding(dp(8), dp(6), dp(8), dp(6))
-                      v.textSize = 15f
-                      v.setAutoSizeTextTypeUniformWithConfiguration(10, 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+                      helpView = v
+                  }
+                  v.textSize = getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("help_sp", 18).toFloat()
+                  v.text = "【說明】" + zh
+                  // 框的高度跟著內容長,不用縮小字體;最多長到螢幕底部上方一點
+                  v.measure(
+                      View.MeasureSpec.makeMeasureSpec(r0.width(), View.MeasureSpec.EXACTLY),
+                      View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                  )
+                  val maxH = maxOf(dp(80), readMetrics()[1] - r0.top - dp(120))
+                  val h = minOf(v.measuredHeight, maxH)
+                  val r = Rect(r0.left, r0.top, r0.right, r0.top + h)
+                  if (fresh) {
                       val lp = WindowManager.LayoutParams(
                           r.width(), r.height(),
                           WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -2946,11 +2981,11 @@ jobs:
                       lp.x = r.left
                       lp.y = r.top
                       try {
-                          (getSystemService(Context.WINDOW_SERVICE) as WindowManager).addView(v, lp)
+                          wmgr.addView(v, lp)
                       } catch (e: Exception) {
+                          helpView = null
                           return
                       }
-                      helpView = v
                   } else {
                       try {
                           val lp = v.layoutParams as WindowManager.LayoutParams
@@ -2958,25 +2993,26 @@ jobs:
                           lp.y = r.top
                           lp.width = r.width()
                           lp.height = r.height()
-                          (getSystemService(Context.WINDOW_SERVICE) as WindowManager).updateViewLayout(v, lp)
+                          wmgr.updateViewLayout(v, lp)
                       } catch (e: Exception) {
                       }
                   }
-                  v.text = "【說明】" + zh
                   v.visibility = View.VISIBLE
                   helpBoxRect = r
+                  lastHelpOk = SystemClock.uptimeMillis()
+                  layoutOverlays()
               }
 
               private fun helpMissed() {
                   helpMiss++
-                  if (helpMiss >= 2) hideHelpBox()
+                  if (helpMiss >= 1) hideHelpBox()
               }
 
               private fun hideHelpBox() {
                   helpBoxRect = null
                   helpMiss = 0
                   helpView?.visibility = View.GONE
-                  restoreSubtitle()
+                  layoutOverlays()
               }
               private var lastHelpZh = ""
               private val SPELL_CHARS = mapOf(
@@ -3005,7 +3041,6 @@ jobs:
               private var overlay: ResultView? = null
               private var subtitle: SubtitleView? = null
               private var subtitleLp: WindowManager.LayoutParams? = null
-              private var subShift: IntArray? = null
               private var menuView: View? = null
 
               private var recognizer: TextRecognizer? = null
@@ -3244,6 +3279,7 @@ jobs:
                   hideSubtitle()
                   hideGuideHint()
                   hideHelpBox()
+                  lastWasSpell = false
               }
 
               // ---------------------------------------------------------------- 擷取畫面
@@ -3468,7 +3504,7 @@ jobs:
                           if (img !== src) img.recycle()
                       }
                   }
-                  if (engine == "aiv" && !spellModeOn) return runAiv()
+                  if (engine == "aiv" && !spellModeOn && !auto) return runAiv()
                   if (spellModeOn && !skipGate) {
                       // 魔法選單模式會把範圍延伸到畫面最上面,辨識很慢。先用一次很快的文字辨識看是不是魔法清單 / HELP 說明,
                       // 不是的話就只處理原本設定的範圍 (對話翻譯速度才不會被拖慢)
@@ -3491,7 +3527,7 @@ jobs:
                       }
                       if (!looksMenu) {
                           ui.post { hideHelpBox() }
-                          if (engine == "aiv") return runAiv()
+                          if (engine == "aiv" && !auto) return runAiv()
                           val cut = regionRows(readMetrics()[1])[0] - topOffset
                           if (cut > 0 && cut < src.height - 40) {
                               val c = Bitmap.createBitmap(src, 0, cut, src.width, src.height - cut)
@@ -3589,7 +3625,7 @@ jobs:
                       val lim = hr.bottom + maxOf(260, 10 * hr.height())
                       val body = blocks.filter { x -> x.rect.top >= hr.bottom - 4 && x.rect.top <= lim }.sortedBy { x -> x.rect.top }
                       blocks = ArrayList(blocks.filter { x -> !body.contains(x) })
-                      helpJp = body.joinToString("") { x -> x.text }
+                      helpJp = body.joinToString("") { x -> x.text }.replace(Regex("[·・.．…‥•]{2,}"), "・・・")
                       if (helpJp.length >= 4) {
                           val fixed = SpellGuide.helpText(applicationContext, helpJp)
                           if (fixed != null) {
@@ -3615,9 +3651,8 @@ jobs:
                       if (hz != null) {
                           val bodyBottom = body.maxOfOrNull { x -> x.rect.bottom } ?: hr.bottom
                           val top = maxOf(bodyBottom + 10, hr.bottom + (hr.height() * 4.8f).toInt())
-                          val h = minOf(src.height + topOffset - top - 60, maxOf(hr.height() * 4, 120))
-                          if (h > 60) {
-                              val br = Rect(src.width / 20, top, src.width - src.width / 20, top + h)
+                          if (src.height + topOffset - top > 100) {
+                              val br = Rect(src.width / 20, top, src.width - src.width / 20, top + 100)
                               ui.post { showHelpBox(hz, br) }
                           }
                       } else {
@@ -3683,7 +3718,7 @@ jobs:
                   }
 
                   if (helpZh != null) return emptyList()
-                  if (engine == "aiv") return runAiv()
+                  if (engine == "aiv" && !auto) return runAiv()
 
                   val out = ArrayList<ResultView.Item>()
                   val merged = merge(blocks)
@@ -3696,7 +3731,12 @@ jobs:
                   for (m in merged) {
                       m.text = tidyJp(m.text)
                       if (m.text.length < 2) continue
-                      out.add(ResultView.Item(m.rect, translateText(tr, m.text, engine), m.lineH, m.text))
+                      if (auto && merged.size == 1) {
+                          // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
+                          out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
+                      } else {
+                          out.add(ResultView.Item(m.rect, translateText(tr, m.text, if (engine == "aiv") "ai" else engine), m.lineH, m.text))
+                      }
                   }
                   lastTrMs = SystemClock.uptimeMillis() - tStart - lastOcrMs
                   return out
@@ -3721,7 +3761,13 @@ jobs:
                   val orig = list.joinToString(" ") { x -> x.orig }
                   val zh = list.joinToString("\n") { x -> x.text }
                   val last = history.lastOrNull()
-                  if (last != null && sameSentence(orig, last.orig)) {
+                  val nO = orig.replace(" ", "").replace("　", "")
+                  val nL = last?.orig?.replace(" ", "")?.replace("　", "") ?: ""
+                  var cp = 0
+                  while (cp < nO.length && cp < nL.length && nO[cp] == nL[cp]) cp++
+                  // 逐字顯示的對話:上一筆只是這句的開頭,就直接換成完整的這句
+                  val grown = last != null && nL.isNotEmpty() && nL.length < nO.length && cp >= (nL.length * 4 + 4) / 5
+                  if (last != null && (grown || sameSentence(orig, last.orig))) {
                       last.orig = orig
                       last.zh = zh
                   } else {
@@ -3757,6 +3803,7 @@ jobs:
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
                   latestCrop = null
+                  clearAutoQueue()
                   history.clear()
                   ui.removeCallbacks(emptyHide)
                   hideSubtitle()
@@ -3857,23 +3904,84 @@ jobs:
                       return
                   }
                   curSig = sig
+                  if (helpBoxRect != null || lastWasSpell) {
+                      // 畫面變了卻沒有再看到 HELP / 魔法清單,就是已經關掉了,把說明框和清單一起收起來
+                      val t0 = SystemClock.uptimeMillis()
+                      ui.postDelayed({
+                          if (helpBoxRect != null && lastHelpOk < t0) hideHelpBox()
+                          if (lastWasSpell && lastSpellOk < t0) hideOverlay()
+                      }, 2000)
+                  }
                   latestCrop?.recycle()
                   latestCrop = crop
                   latestTop = top
                   // 字幕還在跑的時候一直重設計時,停住 0.7 秒後才開始辨識
                   ui.removeCallbacks(stableRun)
-                  ui.postDelayed(stableRun, 300)
+                  ui.postDelayed(stableRun, 200)
+              }
+
+              // 背景翻譯:整句日文已經記在譯文框裡,翻好再換成中文;按太快的句子也會一句一句翻完
+              private val trWorker = Executors.newSingleThreadExecutor()
+
+              private fun scheduleTranslate(jp: String) {
+                  ui.postDelayed({
+                      // 句子還在逐字長出來的時候 (這一筆已經被更完整的取代) 就不翻
+                      if (history.none { h -> h.orig == jp && h.zh == "…" }) return@postDelayed
+                      trWorker.execute {
+                          val tr = translator ?: return@execute
+                          val eng0 = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("engine", "both") ?: "both"
+                          val z = try {
+                              translateText(tr, jp, if (eng0 == "aiv") "ai" else eng0)
+                          } catch (e: Exception) {
+                              "(翻譯失敗:" + (e.message ?: "未知錯誤").take(40) + ")"
+                          }
+                          ui.post { applyTranslation(jp, z) }
+                      }
+                  }, 250)
+              }
+
+              private fun applyTranslation(jp: String, z: String) {
+                  var changed = false
+                  for (h in history) {
+                      if (h.orig == jp && h.zh == "…") {
+                          h.zh = z
+                          changed = true
+                      }
+                  }
+                  val items = shownItems
+                  if (items != null) {
+                      shownItems = items.map { x -> if (x.orig == jp && x.text == "…") ResultView.Item(x.rect, z, x.lineH, x.orig) else x }
+                  }
+                  if (changed && autoOn() && !paused && !lastWasSpell) renderHistory()
+              }
+
+              // 對話畫面一句一句排隊處理,不會因為還在翻譯上一句就漏掉你已經按過去的下一句
+              private val autoQueue = java.util.ArrayDeque<Pair<Bitmap, Int>>()
+
+              private fun clearAutoQueue() {
+                  while (true) {
+                      val x = autoQueue.pollFirst() ?: break
+                      x.first.recycle()
+                  }
               }
 
               private fun runAuto() {
-                  val c = latestCrop ?: return
+                  val c0 = latestCrop ?: return
+                  latestCrop = null
+                  autoQueue.addLast(Pair(c0, latestTop))
+                  while (autoQueue.size > 4) autoQueue.removeFirst().first.recycle()
+                  drainAuto()
+              }
+
+              private fun drainAuto() {
                   if (autoBusy || busy) {
-                      ui.postDelayed(stableRun, 500)
+                      if (autoQueue.isNotEmpty()) ui.postDelayed({ drainAuto() }, 400)
                       return
                   }
+                  val item = autoQueue.pollFirst() ?: return
+                  val c = item.first
                   autoBusy = true
-                  latestCrop = null
-                  val top = latestTop
+                  val top = item.second
                   setLabel("…")
                   worker.execute {
                       val result = try {
@@ -3884,6 +3992,7 @@ jobs:
                       c.recycle()
                       ui.post {
                           autoBusy = false
+                          if (autoQueue.isNotEmpty()) ui.post { drainAuto() }
                           setLabel(baseLabel())
                           val list = result.getOrNull()
                           if (list == null) {
@@ -3905,10 +4014,14 @@ jobs:
                           } else {
                               val jpNow = list.joinToString("") { x -> x.orig }
                               if (jpNow != doneJp) {
+                                  val shownList = list.map { x -> if (x.text.isEmpty()) ResultView.Item(x.rect, "…", x.lineH, x.orig) else x }
                                   doneJp = jpNow
                                   shownJp = jpNow
-                                  shownItems = list
-                                  showResult(list)
+                                  shownItems = shownList
+                                  showResult(shownList)
+                                  for (x in list) {
+                                      if (x.text.isEmpty()) scheduleTranslate(x.orig)
+                                  }
                               }
                           }
                       }
@@ -4352,6 +4465,7 @@ jobs:
                   v.onMove = { dx, dy ->
                       lp.x += dx
                       lp.y += dy
+                      subBaseY = lp.y
                       wm.updateViewLayout(v, lp)
                   }
                   v.onResize = { dw, dh ->
@@ -4363,7 +4477,7 @@ jobs:
                   v.onFinish = {
                       prefs.edit()
                           .putInt("sub_x", lp.x)
-                          .putInt("sub_y", lp.y)
+                          .putInt("sub_y", subBaseY ?: lp.y)
                           .putInt("sub_w", lp.width)
                           .putInt("sub_h", lp.height)
                           .apply()
@@ -4371,6 +4485,7 @@ jobs:
                   wm.addView(v, lp)
                   subtitle = v
                   subtitleLp = lp
+                  subBaseY = lp.y
                   bringButtonToFront()
                   return v
               }
@@ -4382,6 +4497,7 @@ jobs:
                   v.showOrig = getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("show_orig", true)
                   v.visibility = View.VISIBLE
                   v.invalidate()
+                  layoutOverlays()
               }
 
               private fun hideSubtitle() {
@@ -4450,6 +4566,7 @@ jobs:
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
                   latestCrop = null
+                  clearAutoQueue()
                   curSig = null
                   doneJp = ""
                   setLabel(baseLabel())
@@ -4865,6 +4982,7 @@ jobs:
                       hideGuideHint()
                       history.clear()
                       lastWasSpell = true
+                      lastSpellOk = SystemClock.uptimeMillis()
                       ui.removeCallbacks(emptyHide)
                       showSubtitle(list[0].text, list[0].orig.removePrefix("\u0001"))
                       return
@@ -5236,6 +5354,7 @@ jobs:
                   ui.removeCallbacks(stableRun)
                   latestCrop?.recycle()
                   latestCrop = null
+                  clearAutoQueue()
                   ui.removeCallbacks(kick)
                   ui.removeCallbacks(giveUp)
                   try {
