@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.24"
+                  versionName = "3.25"
               }
 
               buildTypes {
@@ -1607,7 +1607,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.24 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.25 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2523,8 +2523,35 @@ jobs:
                       if (k < 4) return null
                       i = if (k < t.length && (t[k].isLetterOrDigit() && t[k].code < 128 || t[k] in "○〇◯Ｃ")) k + 1 else k
                   }
-                  val sp = match(ctx, t.substring(0, i)) ?: return null
+                  val nameRaw = t.substring(0, i)
+                  var sp = match(ctx, nameRaw) ?: return null
+                  // 名稱後面多出一個字 (變化版字母被認成 ロ、エ、可 之類的字,或根本認不出來) 而且這個魔法有變化版 → 一定是變化版,不能當成原版
+                  if (sp.key.last() !in "SCBFN") {
+                      val nk = norm(nameRaw)
+                      if (nk.length > sp.key.length) {
+                          val vs = load(ctx).filter { x -> x.key.length == sp.key.length + 1 && x.key.startsWith(sp.key) && x.key.last() in "SCBFN" }
+                          if (vs.isNotEmpty()) {
+                              val lc = nk.last()
+                              val want = when (lc) {
+                                  'ロ', '口', 'O', '0', '〇', '○', 'Ｏ', 'c', 'Ｃ' -> 'C'
+                                  '8', 'Ｂ', 'ß', 'b' -> 'B'
+                                  'E', 'Ｅ', 'Ｆ', 'f', 'エ' -> 'F'
+                                  '5', 'Ｓ', 's' -> 'S'
+                                  'Ｎ', 'n' -> 'N'
+                                  else -> lc
+                              }
+                              sp = vs.firstOrNull { x -> x.key.last() == want } ?: vs.first()
+                          }
+                      }
+                  }
                   return Pair(sp.name, t.substring(i).trimStart { c -> c in dots })
+              }
+
+              /** HELP 說明開頭「魔法名稱(含變化版字母)」那一段,用來確認兩次辨識是不是同一個魔法 */
+              fun helpHead(jp: String): String {
+                  val t = jp.replace(" ", "").replace("　", "")
+                  val d = Regex("[・·•.．…‥:：]{2,}").find(t)?.range?.first ?: -1
+                  return norm(if (d > 0) t.substring(0, d) else t.take(10))
               }
 
               private var nameRx: List<Pair<Regex, String>>? = null
@@ -3811,13 +3838,13 @@ jobs:
                           val fixed = SpellGuide.helpText(applicationContext, helpJp)
                           if (fixed != null) {
                               helpZh = fixed
-                          } else if (lastHelpZh.isNotEmpty() && (helpJp == lastHelpJp || (lastHelpJp.isNotEmpty() && levDist(helpJp, lastHelpJp) <= maxOf(2, maxOf(helpJp.length, lastHelpJp.length) / 5)))) {
+                          } else if (lastHelpZh.isNotEmpty() && SpellGuide.helpHead(helpJp) == SpellGuide.helpHead(lastHelpJp) && (helpJp == lastHelpJp || (lastHelpJp.isNotEmpty() && levDist(helpJp, lastHelpJp) <= maxOf(2, maxOf(helpJp.length, lastHelpJp.length) / 5)))) {
                               helpZh = lastHelpZh
                           } else {
                               try {
                                   // 魔法名稱用固定譯名,效果說明照畫面內容翻譯
                                   val sh = SpellGuide.splitHelp(applicationContext, helpJp)
-                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateHelpPart(tr, sh.second, engine) else translateHelpPart(tr, helpJp, engine)
+                                  val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateHelpPart(tr, sh.second, engine) else if (sh != null) sh.first else translateHelpPart(tr, helpJp, engine)
                                   if (z.isNotBlank()) {
                                       helpZh = z
                                       lastHelpJp = helpJp
