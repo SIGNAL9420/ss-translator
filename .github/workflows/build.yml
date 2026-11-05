@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.26"
+                  versionName = "3.27"
               }
 
               buildTypes {
@@ -390,6 +390,10 @@ jobs:
           1カ所集中攻撃=單點集中攻擊
           <１力所=１カ所
           <1力所=1カ所
+          ヘックス=格
+          敵味方かんけいなく=不分敵我
+          敵味方関係なく=不分敵我
+          はんい内=範圍內
           __SSFILE_EOF__
           cat > 'app/src/main/assets/guide_chapters.txt' <<'__SSFILE_EOF__'
           # 章節定位資料 (由攻略本第1~8章整理)。C=章節 章|標題|起頁|迄頁;K=關鍵字 關鍵字|章|頁|顯示名稱
@@ -666,6 +670,7 @@ jobs:
           ディム・ウィンC・・・強風を起こして敵を吹き飛ばす魔法の1ヘックス専用型。|魔風C:引發強風把敵人吹飛的魔法,只作用於 1 格的專用型。
           エルメキア・ランス・・・精霊魔法だが精神にダメージをあたえる事ができるため、魔族などにも効果がある。|烈閃槍:雖然是精靈魔法,但能對精神造成傷害,所以對魔族等也有效。
           ダイナスト・ブレスS・・・黒魔法のひとつ、魔族に効果がある。|霸王冰河烈S:黑魔法之一,對魔族有效。
+          前方3ヘックスに攻撃します。はんい内なら敵味方かんけいなくダメージをあたえます。|攻擊前方3格。只要在範圍內,不分敵我都會造成傷害。
           __SSFILE_EOF__
           cat > 'app/src/main/assets/spellpages.txt' <<'__SSFILE_EOF__'
           # 莉娜的魔法選單,每頁 6 個 (順序同遊戲畫面)。格式: 角色|頁|魔法日文名...
@@ -1607,7 +1612,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.26 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.27 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2518,10 +2523,12 @@ jobs:
                   }
                   if (i !in 3..22) {
                       // 找不到那排點:名稱就是開頭那串片假名,後面如果接一個英文字母 / 圓圈字,算變化版
+                      // 名稱 = 開頭到第一個平假名/漢字為止 (中間的點只認出一個、變化版字母被認成別的字也沒關係)
                       var k = 0
-                      while (k < t.length && (t[k] in '゠'..'ヿ')) k++
-                      if (k < 4) return null
-                      i = if (k < t.length && (t[k].isLetterOrDigit() && t[k].code < 128 || t[k] in "○〇◯Ｃ")) k + 1 else k
+                      while (k < t.length && (t[k] in '゠'..'ヿ' || t[k] in "・·•.．" || (t[k].code < 128 && t[k].isLetterOrDigit()) || t[k] in "○〇◯Ｃ")) k++
+                      while (k > 0 && t[k - 1] in "・·•.．") k--
+                      if (k < 4 || k > 22) return null
+                      i = k
                   }
                   val nameRaw = t.substring(0, i)
                   var sp = match(ctx, nameRaw) ?: return null
@@ -3964,7 +3971,7 @@ jobs:
                       m.text = tidyJp(m.text)
                       if (m.text.length < 2) continue
                       // 只有角色名字、或太短的碎字 (狀態欄的名字、畫面雜訊) 不當對話翻
-                      if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 3 && m.text.last() !in "。！？!?」』♪…~～"))) continue
+                      if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 3 && m.text.last() !in "。！？!?」』♪♥♡…~～"))) continue
                       if (auto && merged.size == 1) {
                           // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
                           out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
@@ -4005,7 +4012,7 @@ jobs:
                   val sL = nL.filter { c -> c.isLetterOrDigit() }
                   val sO = nO.filter { c -> c.isLetterOrDigit() }
                   // 上一筆沒有句尾標點 = 還沒講完的半句,容許多幾個字辨識不同
-                  val lastDone = nL.isNotEmpty() && nL.last() in "。！？!?」』♪…~～"
+                  val lastDone = nL.isNotEmpty() && nL.last() in "。！？!?」』♪♥♡…~～"
                   val tol = if (lastDone) maxOf(1, sL.length / 4) else maxOf(2, sL.length / 3)
                   // 半句的字有 8 成以上都出現在完整句裡 (名字和句子順序不同也算) → 也當作同一句
                   val partOf = last != null && !lastDone && sL.length >= 4 && sL.length < sO.length && run {
@@ -4295,7 +4302,7 @@ jobs:
               private fun scheduleTranslate(jp: String, force: Boolean = false, delayMs: Long = 600L) {
                   ensureSweep()
                   val jc = jp.replace(" ", "")
-                  if (!force && jc.length < 6 && jc.isNotEmpty() && jc.last() !in "。！？!?」』♪…~～") return
+                  if (!force && jc.length < 6 && jc.isNotEmpty() && jc.last() !in "。！？!?」』♪♥♡…~～") return
                   trPending++
                   inflight[jp] = (inflight[jp] ?: 0) + 1
                   ui.postDelayed({
@@ -4723,10 +4730,17 @@ jobs:
               }
 
               // HELP 說明:魔法名稱先換成暗號,翻完再換回固定譯名,避免被翻成羅馬拼音或怪字
+              /** 一句一句分開翻 (整段一起丟給翻譯引擎,遇到辨識有缺字的長句常常翻得離譜) */
+              private fun translateSentences(tr: Translator, jp: String, engine: String): String {
+                  val parts = jp.split("。").map { x -> x.trim() }.filter { x -> x.isNotEmpty() }
+                  if (parts.size <= 1) return translateText(tr, jp, engine)
+                  return parts.joinToString("") { x -> translateText(tr, x, engine).trimEnd('。', '.', ' ') + "。" }
+              }
+
               private fun translateHelpPart(tr: Translator, jp: String, engine: String): String {
                   val terms = ArrayList<String>()
                   val pre = SpellGuide.replaceNames(applicationContext, jp, terms)
-                  if (terms.isEmpty()) return translateText(tr, pre, engine)
+                  if (terms.isEmpty()) return translateSentences(tr, pre, engine)
                   // 「(前面說明)魔法名の○○バージョン。」這種固定句型,直接組句,不交給翻譯引擎重排
                   val pm = Regex("^(.*?)W([0-9]+)Wの(.+?)バ[ー一ｰ-]?ジョン[。.]?$").find(pre.replace(" ", ""))
                   if (pm != null) {
@@ -4739,7 +4753,7 @@ jobs:
                           return hz + terms[n - 1] + "的" + mz + "版。"
                       }
                   }
-                  val z = translateText(tr, pre, engine)
+                  val z = translateSentences(tr, pre, engine)
                   val seen = HashSet<Int>()
                   val out = Regex("[Ww]\\s*([0-9]+)\\s*[Ww]").replace(z) { m ->
                       val n = m.groupValues[1].toIntOrNull() ?: 0
@@ -5338,6 +5352,9 @@ jobs:
                   s = s.replace(Regex("[·•・.][0-9０-９]+$"), "")
                   s = s.replace(Regex("[·•]+$"), "")
                   s = s.replace(Regex("^[トﾄ]+(?=[\\u3041-\\u3096\\u4E00-\\u9FFF])"), "")
+                  // 句尾的 ♪ ♥ 符號常被辨識成 の、や 這類平假名:片假名後面句尾的「の」、「ね/よ/わ」後面句尾的「や」當成符號
+                  s = s.replace(Regex("(?<=[ァ-ヶー])の$"), "♪")
+                  s = s.replace(Regex("(?<=[ねよわぞなさ])[やゆゃゅ]$"), "♥")
                   return if (s.isEmpty()) null else s
               }
 
