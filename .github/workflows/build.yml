@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.27"
+                  versionName = "3.28"
               }
 
               buildTypes {
@@ -1612,7 +1612,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.27 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.28 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2480,6 +2480,15 @@ jobs:
                   return null
               }
 
+              /** 選單總頁數剛好只有一個角色符合 (莉娜 7 頁、那加 6 頁) 就回傳那個角色 */
+              fun charByTotal(ctx: Context, total: Int): String? {
+                  if (total <= 0) return null
+                  val mx = HashMap<String, Int>()
+                  for (pg in loadPages(ctx)) mx[pg.who] = maxOf(mx[pg.who] ?: 0, pg.no)
+                  val m = mx.filter { e -> e.value == total }.keys
+                  return if (m.size == 1) m.first() else null
+              }
+
               /** 辨識到的魔法如果大多落在某一頁 (莉娜、那加的選單每頁固定),就把那一頁完整照畫面順序列出 */
               fun pageFor(ctx: Context, who: String?, hits: List<Spell>, pageNo: Int? = null): List<Spell>? {
                   var best: Page? = null
@@ -3067,6 +3076,7 @@ jobs:
               private var spellChar: String? = null
               private var lastSpellList: List<SpellGuide.Spell>? = null
               private var spellPage = 0
+              private var spellTotal = 0
               private var spellPageAt = 0L
               @Volatile
               private var spellCharAt = 0L
@@ -3733,6 +3743,7 @@ jobs:
                           // 遊戲的魔法選單已經完全關掉了,說明框和魔法翻譯欄才一起收起來
                           spellChar = null
                           spellPage = 0
+                          spellTotal = 0
                           lastSpellList = null
                           ui.post {
                               hideHelpBox()
@@ -3773,6 +3784,7 @@ jobs:
                   val cands = ArrayList<Cand>()
                   var helpRect: Rect? = null
                   var pageNoRaw: Int? = null
+                  var pageTotalRaw: Int? = null
                   try {
                       // 4 種版本同時送去辨識,比一個一個等快很多
                       ui.post { setLabel("辨") }
@@ -3801,8 +3813,11 @@ jobs:
                                   val box = ln.boundingBox ?: continue
                                   val up = ln.text.uppercase()
                                   if (pageNoRaw == null) {
-                                      val mm = Regex("PAGE\\s*([0-9])\\s*/\\s*[0-9]").find(up)
-                                      if (mm != null) pageNoRaw = mm.groupValues[1].toInt()
+                                      val mm = Regex("PAGE\\s*([0-9])\\s*/\\s*([0-9])").find(up)
+                                      if (mm != null) {
+                                          pageNoRaw = mm.groupValues[1].toInt()
+                                          pageTotalRaw = mm.groupValues[2].toInt()
+                                      }
                                   }
                                   if (helpRect == null && (up.contains("HELP") || (up.contains("NEXT") && up.contains("END")))) {
                                       helpRect = Rect(
@@ -3856,7 +3871,7 @@ jobs:
                           val fixed = SpellGuide.helpText(applicationContext, helpJp)
                           if (fixed != null) {
                               helpZh = fixed
-                          } else if (lastHelpZh.isNotEmpty() && SpellGuide.helpHead(helpJp) == SpellGuide.helpHead(lastHelpJp) && (helpJp == lastHelpJp || (lastHelpJp.isNotEmpty() && levDist(helpJp, lastHelpJp) <= maxOf(2, maxOf(helpJp.length, lastHelpJp.length) / 5)))) {
+                          } else if (lastHelpZh.isNotEmpty() && SpellGuide.helpHead(helpJp) == SpellGuide.helpHead(lastHelpJp) && (helpJp == lastHelpJp || (lastHelpJp.isNotEmpty() && helpJp.length <= lastHelpJp.length + 1 && levDist(helpJp, lastHelpJp) <= 2))) {
                               helpZh = lastHelpZh
                           } else {
                               try {
@@ -3879,7 +3894,7 @@ jobs:
                           val top = maxOf(bodyBottom + 10, hr.bottom + (hr.height() * 4.8f).toInt())
                           if (src.height + topOffset - top > 100) {
                               val br = Rect(src.width / 20, top, src.width - src.width / 20, top + 100)
-                              ui.post { showHelpBox(hz, br, helpJp) }
+                              ui.post { showHelpBox(hz, br) }
                           }
                       } else {
                           ui.post { helpMissed() }
@@ -3921,7 +3936,10 @@ jobs:
                       spellCharAt = nowMs
                   }
                   // 這一幀沒看到角色名稱時,沿用 20 秒內看到的 (HELP 蓋住選單時用)
-                  val cur = spellChar
+                  val ptr = pageTotalRaw
+                  if (ptr != null) spellTotal = ptr
+                  // HELP 蓋住左邊狀態欄時認不出角色:用選單的總頁數推 (莉娜 7 頁、那加 6 頁)
+                  val cur = spellChar ?: SpellGuide.charByTotal(applicationContext, spellTotal)
                   val rawPage = pageNoRaw
                   if (rawPage != null) {
                       spellPage = rawPage
@@ -4697,7 +4715,10 @@ jobs:
                   if (changed && autoOn() && !paused) renderHistory()
               }
 
-              private fun translateUncached(tr: Translator, jp00: String, engine: String): String {
+              private fun translateUncached(tr: Translator, jp000: String, engine: String): String {
+                  // 愛心、音符這類符號只是語氣,不翻、也不顯示 (翻譯引擎會把它變成表情符號);句尾孤零零的 ) 是符號被認錯
+                  val jp00 = jp000.replace(Regex("[♪♫♬♥♡❤❥]"), "").replace(Regex("[)）]+$"), "").trim()
+                  if (jp00.isEmpty()) return ""
                   // 專有名詞 (魔法名稱) 一律先換成固定譯名,所有翻譯方式都一樣
                   val jp0 = SpellGuide.replaceNames(applicationContext, jp00)
                   val jp = if (engine == "ai" || engine == "aiv") jp0 else Glossary.pre(applicationContext, jp0)
@@ -5343,7 +5364,7 @@ jobs:
                       // 魔法名後面的變化版字母:在行尾,或後面接著那排點點 (HELP 標題「ドラグ・スレイブF····」)
                       val prevC = if (m.range.first > 0) before[m.range.first - 1] else ' '
                       val afterS = before.substring(m.range.last + 1)
-                      val atEnd = afterS.isEmpty() || Regex("^[·•・.．…‥]{2,}").containsMatchIn(afterS)
+                      val atEnd = afterS.isEmpty() || Regex("^[·•・.．…‥]").containsMatchIn(afterS)
                       val keepVariant = m.value.length == 1 && m.value in "SCBFNOE" && atEnd &&
                           (prevC in '゠'..'ヿ' || (prevC in "-−ー" && m.range.first > 1 && before[m.range.first - 2] in '゠'..'ヿ'))
                       if (keepVariant || m.value.uppercase() in setOf("HP", "MP", "AT", "OK", "DATE", "STEP", "HIT", "PAGE")) m.value else ""
@@ -5355,6 +5376,10 @@ jobs:
                   // 句尾的 ♪ ♥ 符號常被辨識成 の、や 這類平假名:片假名後面句尾的「の」、「ね/よ/わ」後面句尾的「や」當成符號
                   s = s.replace(Regex("(?<=[ァ-ヶー])の$"), "♪")
                   s = s.replace(Regex("(?<=[ねよわぞなさ])[やゆゃゅ]$"), "♥")
+                  // 句尾的 ) 如果前面沒有對應的 ( 就是 ♪ 被認錯
+                  if (s.endsWith(")") || s.endsWith("）")) {
+                      if (!s.contains("(") && !s.contains("（")) s = s.dropLast(1) + "♪"
+                  }
                   return if (s.isEmpty()) null else s
               }
 
