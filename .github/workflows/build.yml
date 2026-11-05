@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.22"
+                  versionName = "3.24"
               }
 
               buildTypes {
@@ -1607,7 +1607,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.22 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.24 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2583,7 +2583,24 @@ jobs:
                   val t = jp.replace(" ", "").replace("　", "")
                   var best: String? = null
                   var bs = 0f
+                  // 名稱後面的變化版字母 (F/C/B/S/N) 一定要一樣,否則 ブレスB 會被當成 ブレスS 的固定譯文
+                  fun variantOf(x: String): Char {
+                      val d = Regex("[・·•.．…‥:：]{2,}").find(x)?.range?.first ?: -1
+                      val head = if (d > 0) x.substring(0, d) else x.take(12)
+                      val c = head.trimEnd('・', '·', '•', '.', '．', '…', '‥').lastOrNull() ?: ' '
+                      if (c in '゠'..'ヿ' || c in '぀'..'ゟ') return ' '
+                      return when (c) {
+                          'O', '0', '〇', '○', 'Ｏ', 'ｃ', 'Ｃ', 'c' -> 'C'
+                          '8', 'Ｂ', 'ß', 'B' -> 'B'
+                          'E', 'Ｅ', 'Ｆ', 'f', 'F' -> 'F'
+                          '5', 'Ｓ', 's', 'S' -> 'S'
+                          'Ｎ', 'n', 'N' -> 'N'
+                          else -> ' '
+                      }
+                  }
+                  val tv = variantOf(t)
                   for ((k, v) in h) {
+                      if (variantOf(k) != tv) continue
                       // 只比開頭那一段 (魔法名稱 + 前面一小段),後面辨識錯很多也沒關係
                       val n = minOf(k.length, t.length, 24)
                       if (n < 6) continue
@@ -3775,7 +3792,7 @@ jobs:
                       val nSlash = Regex("[0-9]{2,3}\\s*[/／]").findAll(lastRaw).count()
                       val nNum = Regex("[0-9]{3}").findAll(lastRaw).count()
                       if (nSlash >= 1 || nNum >= 4) {
-                          blocks = ArrayList(blocks.filter { x -> x.text.length >= 5 && !SpellGuide.onlyNames(x.text) })
+                          blocks = ArrayList(blocks.filter { x -> x.text.length >= 5 && !SpellGuide.onlyNames(x.text) && x.text.count { c -> c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF' } >= 2 })
                       }
                   }
 
@@ -3891,7 +3908,7 @@ jobs:
                   if (helpZh != null) return emptyList()
                   // 戰鬥指令畫面 (PUSH R1/2、攻撃設定、ユニットをえらんでね…):這些是遊戲介面,不是對話,不翻
                   // (魔法選單偵測到了、卻沒有清單可顯示的畫面,剩下的字也一律不當對話翻)
-                  if (auto && (menuFrame || Regex("PUSH|R1/2|どこにいどうする|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
+                  if (auto && (menuFrame || Regex("PUSH|R1/2|PAGE[0-9]|STEP[0-9]|HIT[+±]|HELP|C:NEXT|START:END|どこにいどうする|えらんで|ちょっとまって|ただいま戦闘中|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
                           .containsMatchIn(lastRaw.replace(" ", "").replace("　", "")))) return emptyList()
                   if (engine == "aiv" && !auto) return runAiv()
 
