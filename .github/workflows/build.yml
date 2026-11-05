@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.16"
+                  versionName = "3.20"
               }
 
               buildTypes {
@@ -1035,6 +1035,8 @@ jobs:
               private var blockedUntil = 0L
 
               private const val GEMINI_DAILY_SOFT_CAP = 1500
+              private const val PER_MINUTE_CAP = 12
+              private val recent = java.util.ArrayDeque<Long>()
 
               private val pt = java.util.TimeZone.getTimeZone("America/Los_Angeles")
 
@@ -1065,6 +1067,12 @@ jobs:
               fun tryAcquire(ctx: Context): String? {
                   val now = System.currentTimeMillis()
                   if (now < blockedUntil) return "AI 暫停中"
+                  // Gemini 免費版每分鐘最多 15 次:我們自己先限制在 12 次 (留一點餘裕),超過的句子這一輪改用 Google 翻譯
+                  if (isGemini(ctx)) {
+                      while (recent.isNotEmpty() && now - recent.first() > 60_000L) recent.removeFirst()
+                      if (recent.size >= PER_MINUTE_CAP) return "AI 每分鐘次數已滿"
+                      recent.addLast(now)
+                  }
                   if (isGemini(ctx)) {
                       val p = ctx.getSharedPreferences("cfg", Context.MODE_PRIVATE)
                       val day = dayKey()
@@ -1593,7 +1601,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.16 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.20 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -1607,7 +1615,7 @@ jobs:
                       "• 智慧模式:Google 先翻,程式檢查到怪句子就換 AI,再失敗用離線\n" +
                       "• 遊戲內建華曜攻略本,遇到角色、魔法名會提示,並會猜你玩到第幾章、提示該看哪一頁\n" +
                       "• 對話翻譯:日文一出現就先記下整句,翻譯在後台一句一句排隊完成,你連按好幾句也會全部翻完。翻好的句子由上到下排在譯文框裡,可上下滑動看前面的句子\n" +
-                      "• 對話結束、全部翻完後,譯文框會再停 8 秒讓你看完才自動收起;也可以隨時按右上角 ✕ 關閉\n" +
+                      "• 譯文框不會自己消失;按右上角 ✕ 只是關掉這個框,自動翻譯照常繼續,下一句新對話出現會自動再打開\n" +
                       "• 魔法選單:顯示該頁魔法的固定譯名;HELP 說明另外用自己的框,可在下方分別調整字體大小\n" +
                       "• 用線上或 AI 翻譯時,辨識到的文字會傳到對應服務"
                   intro.setPadding(0, dp(8), 0, dp(12))
@@ -2451,7 +2459,8 @@ jobs:
 
               /** 狀態欄上的角色名稱 (容許辨識錯一個字),不是角色名稱就回傳 null */
               fun charOf(line: String): String? {
-                  val t = line.replace(" ", "").replace("　", "").replace("・", "")
+                  // 名字常和旁邊的 PUSH R1/2 之類英數字黏在同一行,只留日文字再比對
+                  val t = line.filter { c -> c in '぀'..'ヿ' && c != '・' || c in '一'..'鿿' }
                   if (t.isEmpty() || t.length > 8) return null
                   charNames[t]?.let { return it }
                   for ((k, v) in charNames) {
@@ -3142,6 +3151,15 @@ jobs:
               private var lastAutoTs = 0L
               private var curSig: IntArray? = null
               private var lastAcceptAt = 0L
+              // 診斷統計:對話畫面換句的間隔 (約等於你按下一句的間隔)、漏掉的畫面數、一句翻完的時間
+              private var statLastChangeAt = 0L
+              private var statMinGap = Long.MAX_VALUE
+              private var statGapSum = 0L
+              private var statGapN = 0
+              private var statDrops = 0
+              private var statLatSum = 0L
+              private var statLatN = 0
+              private var statLatMax = 0L
               private var settleDone = true
               private var settlePosted = false
               private var settleCrop: Bitmap? = null
@@ -3860,7 +3878,7 @@ jobs:
                   if (helpZh != null) return emptyList()
                   // 戰鬥指令畫面 (PUSH R1/2、攻撃設定、ユニットをえらんでね…):這些是遊戲介面,不是對話,不翻
                   // (魔法選單偵測到了、卻沒有清單可顯示的畫面,剩下的字也一律不當對話翻)
-                  if (auto && (menuFrame || Regex("PUSH|R1/2|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
+                  if (auto && (menuFrame || Regex("PUSH|R1/2|どこにいどうする|えらんで|攻撃設定|呪文設定|移動設定|行動設定|待機設定|戦闘設定|アイテム設定")
                           .containsMatchIn(lastRaw.replace(" ", "").replace("　", "")))) return emptyList()
                   if (engine == "aiv" && !auto) return runAiv()
 
@@ -3875,6 +3893,8 @@ jobs:
                   for (m in merged) {
                       m.text = tidyJp(m.text)
                       if (m.text.length < 2) continue
+                      // 只有角色名字、或太短的碎字 (狀態欄的名字、畫面雜訊) 不當對話翻
+                      if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 3 && m.text.last() !in "。！？!?」』♪…~～"))) continue
                       if (auto && merged.size == 1) {
                           // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
                           out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
@@ -3896,7 +3916,7 @@ jobs:
               private var lastTrMs = 0L
 
               // 譯文框保留最近 10 段對話,框內可上下滑動看前後文
-              private class Hist(var orig: String, var zh: String)
+              private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0)
 
               private val history = ArrayList<Hist>()
               private var hideQueued = false
@@ -3924,14 +3944,18 @@ jobs:
                   }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
                       (levDist(sL, sO.take(sL.length)) <= tol || partOf)
-                  if (last != null && !grown && last.zh != "…" && sameSentence(orig, last.orig)) {
+                  if (last != null && !grown && last.zh != "…" && nO.length <= nL.length + 1 && sameSentence(orig, last.orig)) {
                       // 同一句重新辨識只差一兩個字:保留已經翻好的,不要讓譯文跳來跳去
                       return
                   }
                   if (last != null && (grown || sameSentence(orig, last.orig))) {
                       last.orig = orig
                       last.zh = zh
+                      last.at = SystemClock.uptimeMillis()
+                      last.tries = 0
                   } else {
+                      // 上一句已經講完 (下一句接上來了),不用再等,馬上翻
+                      if (last != null && last.zh == "…") scheduleTranslate(last.orig, true, 0L)
                       history.add(Hist(orig, zh))
                       while (history.size > 10) history.removeAt(0)
                   }
@@ -4091,6 +4115,14 @@ jobs:
                   // 畫面大幅改變 (按了下一句、整句消失):上一個畫面還沒辨識的最後一張,先排進辨識佇列,不能丟掉
                   val bigChange = prev == null || prev.size != sig.size || sigDiff(prev, sig) > 120
                   if (bigChange && !lastWasSpell && helpBoxRect == null) {
+                      val nowT = SystemClock.uptimeMillis()
+                      val gap = nowT - statLastChangeAt
+                      if (statLastChangeAt > 0 && gap < 20000) {
+                          if (gap < statMinGap) statMinGap = gap
+                          statGapSum += gap
+                          statGapN++
+                      }
+                      statLastChangeAt = nowT
                       val oldS = settleCrop
                       val old = oldS ?: latestCrop
                       if (old != null) {
@@ -4102,7 +4134,10 @@ jobs:
                           }
                           latestCrop = null
                           autoQueue.addLast(Pair(old, latestTop))
-                          while (autoQueue.size > 4) autoQueue.removeFirst().first.recycle()
+                          while (autoQueue.size > 8) {
+                      autoQueue.removeFirst().first.recycle()
+                      statDrops++
+                  }
                           ui.post { drainAuto() }
                       }
                   }
@@ -4122,7 +4157,7 @@ jobs:
               }
 
               // 背景翻譯:整句日文已經記在譯文框裡,翻好再換成中文;按太快的句子也會一句一句翻完
-              private val trWorker = Executors.newSingleThreadExecutor()
+              private val trWorker = Executors.newFixedThreadPool(3)
 
               private var trPending = 0
 
@@ -4131,52 +4166,91 @@ jobs:
                   override fun run() {
                       if (trPending > 0 || history.any { h -> h.zh == "…" }) {
                           ui.postDelayed(this, 500)
-                      } else {
-                          // 全部翻完、對話也結束了:留 8 秒給你看完再自動收起 (中途又有新對話就取消)
-                          ui.postDelayed(emptyHide, 8000L)
                       }
+                      // 全部翻完之後譯文框一直留著,由使用者按 ✕ 關閉
                   }
               }
 
-              // 太短又沒有句尾標點的字 (逐字出現到一半) 先不翻,避免翻出怪字;對話結束時才補翻
-              private fun scheduleTranslate(jp: String, force: Boolean = false) {
+              // 正在翻譯中的原文 (同一句不重複送出)
+              private val inflight = HashMap<String, Int>()
+              private var sweeping = false
+
+              // 保險:每 1.5 秒檢查一次,還停在「…」又沒有人在翻的句子,補送翻譯 (翻失敗的最多重試 3 次)
+              private val sweepRun = object : Runnable {
+                  override fun run() {
+                      val now = SystemClock.uptimeMillis()
+                      var any = false
+                      for (h in ArrayList(history)) {
+                          if (h.zh != "…") continue
+                          any = true
+                          if (now - h.at > 1200 && (inflight[h.orig] ?: 0) == 0) scheduleTranslate(h.orig, true)
+                      }
+                      if (any) ui.postDelayed(this, 1500) else sweeping = false
+                  }
+              }
+
+              private fun ensureSweep() {
+                  if (!sweeping) {
+                      sweeping = true
+                      ui.postDelayed(sweepRun, 1500)
+                  }
+              }
+
+              private fun endFlight(jp: String) {
+                  val n = (inflight[jp] ?: 1) - 1
+                  if (n <= 0) inflight.remove(jp) else inflight[jp] = n
+                  trPending--
+              }
+
+              // 逐字長出來的句子先不翻:等這句日文停住 0.6 秒沒再變長 (或已經被下一句接上) 才翻完整的那一句
+              private fun scheduleTranslate(jp: String, force: Boolean = false, delayMs: Long = 600L) {
+                  ensureSweep()
                   val jc = jp.replace(" ", "")
                   if (!force && jc.length < 6 && jc.isNotEmpty() && jc.last() !in "。！？!?」』♪…~～") return
                   trPending++
+                  inflight[jp] = (inflight[jp] ?: 0) + 1
                   ui.postDelayed({
-                      // 句子還在逐字長出來的時候 (這一筆已經被更完整的取代) 就不翻
+                      // 這一筆已經被更完整的取代 (還在逐字長出來) 就不翻
                       if (history.none { h -> pendingMatch(h, jp) }) {
-                          trPending--
+                          endFlight(jp)
                           return@postDelayed
                       }
                       trWorker.execute {
                           val tr = translator
                           if (tr == null) {
-                              ui.post { trPending-- }
+                              ui.post { endFlight(jp) }
                               return@execute
                           }
                           val eng0 = getSharedPreferences("cfg", Context.MODE_PRIVATE).getString("engine", "smart") ?: "smart"
-                          val z = try {
+                          val errBox = arrayOf("")
+                          val zr: String? = try {
                               translateText(tr, jp, if (eng0 == "aiv") "ai" else eng0)
                           } catch (e: Exception) {
-                              "(翻譯失敗:" + (e.message ?: "未知錯誤").take(40) + ")"
+                              errBox[0] = "(翻譯失敗:" + (e.message ?: "未知錯誤").take(40) + ")"
+                              null
                           }
+                          val err = errBox[0]
                           ui.post {
-                              trPending--
-                              applyTranslation(jp, z)
+                              endFlight(jp)
+                              if (zr != null && zr.isNotBlank()) {
+                                  applyTranslation(jp, zr)
+                              } else {
+                                  // 失敗:不顯示錯誤字,稍後自動重試,連續 3 次都失敗才顯示
+                                  for (h in history) {
+                                      if (pendingMatch(h, jp)) {
+                                          h.tries++
+                                          h.at = SystemClock.uptimeMillis()
+                                      }
+                                  }
+                                  if (history.any { h -> pendingMatch(h, jp) && h.tries >= 3 }) applyTranslation(jp, if (err.isNotEmpty()) err else "(翻譯失敗)")
+                              }
                           }
                       }
-                  }, 250)
+                  }, delayMs)
               }
 
-              // 等待翻譯的那一筆:原文相同,或只是辨識差一兩個字 (長度差不多)
-              private fun pendingMatch(h: Hist, jp: String): Boolean {
-                  if (h.zh != "…") return false
-                  if (h.orig == jp) return true
-                  val a = h.orig.replace(" ", "")
-                  val b = jp.replace(" ", "")
-                  return kotlin.math.abs(a.length - b.length) <= maxOf(1, b.length / 8) && sameSentence(h.orig, jp)
-              }
+              // 等待翻譯的那一筆:一定要原文完全一樣 (半句的舊譯文不能套到後來變完整的句子上)
+              private fun pendingMatch(h: Hist, jp: String): Boolean = h.zh == "…" && h.orig == jp
 
               private fun flushDeferred() {
                   for (h in ArrayList(history)) {
@@ -4188,13 +4262,17 @@ jobs:
                   var changed = false
                   for (h in history) {
                       if (pendingMatch(h, jp)) {
+                          val lat = SystemClock.uptimeMillis() - h.at
+                          statLatSum += lat
+                          statLatN++
+                          if (lat > statLatMax) statLatMax = lat
                           h.zh = z
                           changed = true
                       }
                   }
                   val items = shownItems
                   if (items != null) {
-                      shownItems = items.map { x -> if (x.text == "…" && (x.orig == jp || sameSentence(x.orig, jp))) ResultView.Item(x.rect, z, x.lineH, x.orig) else x }
+                      shownItems = items.map { x -> if (x.text == "…" && x.orig == jp) ResultView.Item(x.rect, z, x.lineH, x.orig) else x }
                   }
                   if (changed && autoOn() && !paused && !lastWasSpell) renderHistory()
               }
@@ -4215,7 +4293,10 @@ jobs:
                   // 魔法選單 / HELP 開著的時候只看最新的畫面,舊的不用排隊 (排隊會讓說明晚很久才出來)
                   if (lastWasSpell || helpBoxRect != null) clearAutoQueue()
                   autoQueue.addLast(Pair(c0, latestTop))
-                  while (autoQueue.size > 4) autoQueue.removeFirst().first.recycle()
+                  while (autoQueue.size > 8) {
+                      autoQueue.removeFirst().first.recycle()
+                      statDrops++
+                  }
                   drainAuto()
               }
 
@@ -4254,7 +4335,6 @@ jobs:
                                   // 對話框消失了,譯文先留著讓你看完,20 秒後自動收起
                                   ui.removeCallbacks(emptyHide)
                                   // 魔法選單還開著的時候 (例如被 HELP 蓋住一半) 不收;選單關了由上面的偵測收起來
-                                  if (!lastWasSpell) ui.postDelayed(emptyHide, 20000L)
                               } else if (history.isNotEmpty()) {
                                   // 對話結束了:後台還在翻的句子要翻完,框才收起來
                                   flushDeferred()
@@ -4772,7 +4852,12 @@ jobs:
                       lp.height = maxOf(dp(60), lp.height + dh)
                       wm.updateViewLayout(v, lp)
                   }
-                  v.onClose = { pauseAuto() }
+                  v.onClose = {
+                      // 只關掉譯文框,自動翻譯照常繼續;下一句新對話出現會再自動打開
+                      history.clear()
+                      hideGuideHint()
+                      hideSubtitle()
+                  }
                   v.onFinish = {
                       prefs.edit()
                           .putInt("sub_x", lp.x)
@@ -4991,6 +5076,21 @@ jobs:
                       }
                   })
                   addRow({ "上次耗時:辨識 " + lastOcrMs + " 毫秒、翻譯 " + lastTrMs + " 毫秒" }, { })
+                  addRow({
+                      if (statGapN == 0 && statLatN == 0) "對話統計:還沒有資料 (玩一段對話後再來看)"
+                      else "對話統計:換句間隔最短 " + (if (statMinGap == Long.MAX_VALUE) 0 else statMinGap) + " 毫秒、平均 " +
+                          (if (statGapN > 0) statGapSum / statGapN else 0) + " 毫秒;漏掉畫面 " + statDrops + " 次;一句翻完平均 " +
+                          (if (statLatN > 0) statLatSum / statLatN else 0) + " 毫秒、最久 " + statLatMax + " 毫秒 (點一下歸零)"
+                  }, {
+                      statLastChangeAt = 0L
+                      statMinGap = Long.MAX_VALUE
+                      statGapSum = 0L
+                      statGapN = 0
+                      statDrops = 0
+                      statLatSum = 0L
+                      statLatN = 0
+                      statLatMax = 0L
+                  })
                   addRow({
                       val c = ChapterGuide.current(applicationContext)
                       val info = ChapterGuide.chapterInfo(applicationContext, c)
