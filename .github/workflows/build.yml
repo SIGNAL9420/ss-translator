@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.28"
+                  versionName = "3.30"
               }
 
               buildTypes {
@@ -374,7 +374,6 @@ jobs:
           <ヘックス=マス
 
           # 日常用語
-          捨てゴマ=棄子
           捨て駒=棄子
 
           # --- HELP 說明常用句型 ---
@@ -1612,7 +1611,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.28 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.30 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3077,6 +3076,8 @@ jobs:
               private var lastSpellList: List<SpellGuide.Spell>? = null
               private var spellPage = 0
               private var spellTotal = 0
+              @Volatile
+              private var modelKicked = false
               private var spellPageAt = 0L
               @Volatile
               private var spellCharAt = 0L
@@ -3761,13 +3762,19 @@ jobs:
                           }
                       }
                   }
-                  if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst") {
+                  if (engine == "offline") {
                       try {
                           Tasks.await(tr.downloadModelIfNeeded(DownloadConditions.Builder().build()), 90, TimeUnit.SECONDS)
                       } catch (e: Exception) {
-                          if (engine == "offline") {
-                              throw IllegalStateException("尚未下載翻譯模型,請回主畫面按「②」")
-                          }
+                          throw IllegalStateException("尚未下載翻譯模型,請回主畫面按「②」")
+                      }
+                  } else if (engine != "online" && engine != "ai" && engine != "aiv" && engine != "aifirst" && !modelKicked) {
+                      // 智慧 / 線上優先模式主要用 Google,離線模型只是備用:在背景下載就好,不能讓辨識等它 (重新安裝後模型要重載,以前會卡 20 秒以上)
+                      modelKicked = true
+                      try {
+                          tr.downloadModelIfNeeded(DownloadConditions.Builder().build())
+                      } catch (e: Exception) {
+                          // 備用而已
                       }
                   }
 
@@ -4599,16 +4606,7 @@ jobs:
               private fun cacheGet(engine: String, jp: String): String? {
                   val key = cacheKey(engine, jp)
                   trCache[key]?.let { return it }
-                  val mine = jpBigrams(jp)
-                  if (mine.size < 4) return null
-                  for (k in trCacheKeys) {
-                      if (!k.startsWith("$engine|")) continue
-                      val other = jpBigrams(k.substring(engine.length + 1))
-                      if (other.isEmpty()) continue
-                      val inter = mine.count { x -> other.contains(x) }
-                      val union = mine.size + other.size - inter
-                      if (union > 0 && inter.toFloat() / union >= 0.8f) return trCache[k]
-                  }
+                  // 只有日文完全一樣才用暫存;不再用「差不多像」的句子的譯文,避免不同的句子被貼上別句的翻譯
                   return null
               }
 
@@ -5266,6 +5264,11 @@ jobs:
                   })
                   addRow({ "清除譯文" }, {
                       hideOverlay()
+                      // 同時清掉暫存的譯文,同一句日文會重新翻一次
+                      synchronized(trCache) {
+                          trCache.clear()
+                          trCacheKeys.clear()
+                      }
                   })
                   addRow({ "停止翻譯服務" }, {
                       closeMenu()
