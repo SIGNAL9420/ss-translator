@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.25"
+                  versionName = "3.26"
               }
 
               buildTypes {
@@ -1607,7 +1607,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.25 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.26 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2691,6 +2691,8 @@ jobs:
               private var sc = 0f
               private var maxSc = 0f
               private var autoBottom = true
+              // 魔法清單:固定從最上面開始顯示 (第一行才不會被捲掉)
+              var alignTop = false
               private var lastTouch = 0L
               var orig: String = ""
               var showOrig: Boolean = true
@@ -2767,7 +2769,7 @@ jobs:
                   val viewH = h - 2 * pad - oh
                   maxSc = maxOf(0f, layout.height - viewH)
                   if (autoBottom) {
-                      sc = maxSc
+                      sc = if (alignTop) 0f else maxSc
                       autoBottom = false
                   }
                   sc = sc.coerceIn(0f, maxSc)
@@ -3093,7 +3095,7 @@ jobs:
                   }
               }
 
-              private fun showHelpBox(zh: String, r0: Rect) {
+              private fun showHelpBox(zh: String, r0: Rect, jp: String = "") {
                   helpMiss = 0
                   val wmgr = getSystemService(Context.WINDOW_SERVICE) as WindowManager
                   var v = helpView
@@ -3106,7 +3108,16 @@ jobs:
                       helpView = v
                   }
                   v.textSize = getSharedPreferences("cfg", Context.MODE_PRIVATE).getInt("help_sp", 18).toFloat()
-                  v.text = "【說明】" + zh
+                  if (jp.isNotEmpty() && getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("show_orig", true)) {
+                      val full = "【說明】" + zh + "\n" + jp
+                      val sp = android.text.SpannableString(full)
+                      val st = full.length - jp.length
+                      sp.setSpan(android.text.style.RelativeSizeSpan(0.6f), st, full.length, 0)
+                      sp.setSpan(android.text.style.ForegroundColorSpan(0xFFFFD54F.toInt()), st, full.length, 0)
+                      v.text = sp
+                  } else {
+                      v.text = "【說明】" + zh
+                  }
                   // 框的高度跟著內容長,不用縮小字體;最多長到螢幕底部上方一點
                   v.measure(
                       View.MeasureSpec.makeMeasureSpec(r0.width(), View.MeasureSpec.EXACTLY),
@@ -3861,7 +3872,7 @@ jobs:
                           val top = maxOf(bodyBottom + 10, hr.bottom + (hr.height() * 4.8f).toInt())
                           if (src.height + topOffset - top > 100) {
                               val br = Rect(src.width / 20, top, src.width - src.width / 20, top + 100)
-                              ui.post { showHelpBox(hz, br) }
+                              ui.post { showHelpBox(hz, br, helpJp) }
                           }
                       } else {
                           ui.post { helpMissed() }
@@ -4066,6 +4077,8 @@ jobs:
                   ui.removeCallbacks(emptyHide)
                   hideSubtitle()
                   hideGuideHint()
+                  hideHelpBox()
+                  lastWasSpell = false
                   setLabel(baseLabel())
                   toast("已暫停自動翻譯。短按懸浮球可以恢復")
               }
@@ -4670,7 +4683,7 @@ jobs:
                   val hv = helpView
                   val hr0 = helpBoxRect
                   if (hv != null && hr0 != null && hv.visibility == View.VISIBLE) {
-                      val curText = hv.text.toString().removePrefix("【說明】")
+                      val curText = hv.text.toString().removePrefix("【說明】").substringBefore("\n")
                       if (curText.contains(old)) showHelpBox(curText.replace(old, ai), hr0)
                   }
                   if (lastHelpZh.contains(old)) lastHelpZh = lastHelpZh.replace(old, ai)
@@ -4936,6 +4949,8 @@ jobs:
                       history.clear()
                       hideGuideHint()
                       hideSubtitle()
+                      hideHelpBox()
+                      lastWasSpell = false
                   }
                   v.onFinish = {
                       prefs.edit()
@@ -4953,8 +4968,9 @@ jobs:
                   return v
               }
 
-              private fun showSubtitle(zh: String, orig: String) {
+              private fun showSubtitle(zh: String, orig: String, top: Boolean = false) {
                   val v = subtitle ?: createSubtitle()
+                  v.alignTop = top
                   v.zh = zh
                   v.orig = orig
                   v.showOrig = getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("show_orig", true)
@@ -5466,7 +5482,7 @@ jobs:
                       lastWasSpell = true
                       lastSpellOk = SystemClock.uptimeMillis()
                       ui.removeCallbacks(emptyHide)
-                      showSubtitle(list[0].text, list[0].orig.removePrefix("\u0001"))
+                      showSubtitle(list[0].text, list[0].orig.removePrefix("\u0001"), true)
                       return
                   }
                   lastWasSpell = false
@@ -5822,6 +5838,14 @@ jobs:
 
               override fun onDestroy() {
                   hideWalk()
+                  try {
+                      val hv = helpView
+                      if (hv != null) wm.removeView(hv)
+                  } catch (e: Exception) {
+                      // ignore
+                  }
+                  helpView = null
+                  helpBoxRect = null
                   try {
                       val re = regionEditor
                       if (re != null) wm.removeView(re)
