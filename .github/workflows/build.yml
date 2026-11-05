@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.20"
+                  versionName = "3.21"
               }
 
               buildTypes {
@@ -1601,7 +1601,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.20 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.21 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3151,6 +3151,7 @@ jobs:
               private var lastAutoTs = 0L
               private var curSig: IntArray? = null
               private var lastAcceptAt = 0L
+              private var slotAt = 0L
               // 診斷統計:對話畫面換句的間隔 (約等於你按下一句的間隔)、漏掉的畫面數、一句翻完的時間
               private var statLastChangeAt = 0L
               private var statMinGap = Long.MAX_VALUE
@@ -3887,7 +3888,9 @@ jobs:
                   if (auto) {
                       val jpAll = merged.joinToString("") { x -> x.text }
                       val prevItems = shownItems
-                      if (prevItems != null && shownJp.isNotEmpty() && sameSentence(jpAll, shownJp)) return prevItems
+                      // 畫面上的字比上次顯示的「更長」(逐字長出來的後半句) 就不是同一句,一定要重新處理,不能沿用舊的半句
+                      val longer = jpAll.replace(" ", "").length > shownJp.replace(" ", "").length + 1
+                      if (prevItems != null && shownJp.isNotEmpty() && !longer && sameSentence(jpAll, shownJp)) return prevItems
                   }
                   ui.post { setLabel("譯") }
                   for (m in merged) {
@@ -4148,10 +4151,27 @@ jobs:
                   settleCrop = null
                   lastAcceptAt = System.currentTimeMillis()
                   curSig = sig
+                  latestTop = top
+                  if (!lastWasSpell && helpBoxRect == null) {
+                      // 對話:每一張有變化的畫面都直接排進辨識佇列 (辨識一張只要 0.2~0.5 秒),
+                      // 只有 0.1 秒內連續的逐字畫面才合併,所以「這句講完那一刻」的畫面不會被下一句蓋掉
+                      val nowQ = SystemClock.uptimeMillis()
+                      if (autoQueue.isNotEmpty() && nowQ - slotAt < 100) {
+                          autoQueue.pollLast().first.recycle()
+                      } else {
+                          slotAt = nowQ
+                      }
+                      autoQueue.addLast(Pair(crop, top))
+                      while (autoQueue.size > 8) {
+                          autoQueue.removeFirst().first.recycle()
+                          statDrops++
+                      }
+                      if (!autoBusy && !busy) drainAuto()
+                      return
+                  }
                   latestCrop?.recycle()
                   latestCrop = crop
-                  latestTop = top
-                  // 字幕還在跑的時候一直重設計時,停住 0.7 秒後才開始辨識
+                  // 魔法選單 / HELP 只看最新畫面,停住 0.2 秒後才辨識
                   ui.removeCallbacks(stableRun)
                   ui.postDelayed(stableRun, 200)
               }
