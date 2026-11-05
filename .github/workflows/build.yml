@@ -49,7 +49,7 @@ jobs:
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 4
-                  versionName = "3.21"
+                  versionName = "3.22"
               }
 
               buildTypes {
@@ -1087,6 +1087,12 @@ jobs:
                   return null
               }
 
+              /** 伺服器回 503 (Google 那邊忙線):先暫停 AI 30 秒,這段改用 Google 翻譯,不要每句都再試一次 */
+              fun onServerBusy() {
+                  val t = System.currentTimeMillis() + 30 * 1000L
+                  if (t > blockedUntil) blockedUntil = t
+              }
+
               /** 伺服器回 429 */
               fun onServer429(ctx: Context, msg: String) {
                   val now = System.currentTimeMillis()
@@ -1601,7 +1607,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.21 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.22 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2492,7 +2498,7 @@ jobs:
                   }
                   if (best == null) return null
                   // 不知道是哪個角色時,要有 5 個以上吻合而且沒有並列才用
-                  if (who == null && (bestN < 5 || tie)) return null
+                  if (who == null && (bestN < 2 || tie)) return null
                   if (bestN >= 2) return best.spells
                   return if (who != null && bestN == 1 && !tie) best.spells else null
               }
@@ -3006,6 +3012,7 @@ jobs:
 
               @Volatile
               private var spellChar: String? = null
+              private var lastSpellList: List<SpellGuide.Spell>? = null
               private var spellPage = 0
               private var spellPageAt = 0L
               @Volatile
@@ -3664,6 +3671,7 @@ jobs:
                           // 遊戲的魔法選單已經完全關掉了,說明框和魔法翻譯欄才一起收起來
                           spellChar = null
                           spellPage = 0
+                          lastSpellList = null
                           ui.post {
                               hideHelpBox()
                               if (lastWasSpell) hideOverlay()
@@ -3866,7 +3874,11 @@ jobs:
                   if (spellAllowed && spellBanner && spellHits.isEmpty() && fixedPage == null) return emptyList()
                   if (spellAllowed && (fixedPage != null || spellHits.size >= 2 || (spellHits.size == 1 && (spellMode || spellBanner)))) {
                       val rect = Rect(0, topOffset, src.width, topOffset + src.height)
-                      val page = fixedPage ?: SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
+                      var page = fixedPage ?: SpellGuide.pageFor(applicationContext, cur, spellHits, pageNo)
+                      // 這一幀認不出是哪一頁時,如果認到的魔法都在剛才顯示的那一頁裡,就繼續用那一頁 (游標移動時選單字會被辨識錯,避免亂跳)
+                      val prevList = lastSpellList
+                      if (page == null && prevList != null && spellHits.isNotEmpty() && spellHits.all { h -> prevList.any { x -> x.key == h.key } }) page = prevList
+                      if (page != null) lastSpellList = page
                       val listHits: List<SpellGuide.Spell> = page ?: spellHits
                       if (page != null) spellMiss.clear()
                       val zh = listHits.joinToString("\n") { x -> x.name + ":" + x.info.split(" / ").filter { q -> !q.startsWith("MP ") }.joinToString(" / ") }
@@ -4557,6 +4569,9 @@ jobs:
                               throw IllegalStateException("AI 額度滿了 (429),請到選單改用線上或離線翻譯")
                           }
                       } else {
+                          if (guarded && (msg.contains("503") || msg.contains("UNAVAILABLE", true) || msg.contains("overloaded", true))) {
+                              AiQuota.onServerBusy()
+                          }
                           if (!guarded) throw IllegalStateException("AI 失敗:" + msg.take(60) + " (可到選單改用線上或離線翻譯)")
                           ui.post { toast("AI 失敗,改用 Google 翻譯:" + msg.take(60)) }
                       }
