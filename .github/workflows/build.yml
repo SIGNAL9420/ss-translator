@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 9
-                  versionName = "3.36"
+                  versionCode = 10
+                  versionName = "3.37"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.36 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.37 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -4184,7 +4184,9 @@ jobs:
               private var lastTrMs = 0L
 
               // 譯文框保留最近 10 段對話,框內可上下滑動看前後文
-              private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0)
+              private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0, var page: Int = 0)
+              @Volatile
+              private var pageSerial = 0
 
               private val history = ArrayList<Hist>()
               private var hideQueued = false
@@ -4221,6 +4223,16 @@ jobs:
                           if ((sO.length >= 8 && se.contains(sO)) || sameSentence(orig, e.orig) || levDist(sO, se) <= maxOf(2, minOf(sO.length, se.length) / 3)) return
                       }
                   }
+                  // 同一個畫面頁 (沒有按下一句) 內又辨識到不同寫法:換掉上一筆,不要多加一行
+                  if (last != null && last.page == pageSerial && sL.length >= 3 && sO.length >= 3 && SystemClock.uptimeMillis() - last.at < 15000L) {
+                      if (sO.length >= sL.length - 2) {
+                          last.orig = orig
+                          last.zh = zh
+                          last.at = SystemClock.uptimeMillis()
+                          last.tries = 0
+                      }
+                      return
+                  }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
                       (levDist(sL, sO.take(sL.length)) <= tol || partOf)
                   // 跟上一筆有一大半相同的詞 (淡入的字被辨識成不同寫法) 而且是 6 秒內 → 也當作同一句
@@ -4243,7 +4255,7 @@ jobs:
                   } else {
                       // 上一句已經講完 (下一句接上來了),不用再等,馬上翻
                       if (last != null && last.zh == "…") scheduleTranslate(last.orig, true, 0L)
-                      history.add(Hist(orig, zh))
+                      history.add(Hist(orig, zh, SystemClock.uptimeMillis(), 0, pageSerial))
                       while (history.size > 10) history.removeAt(0)
                   }
               }
@@ -4430,6 +4442,7 @@ jobs:
                           ui.post { drainAuto() }
                       }
                   }
+                  if (bigChange && !lastWasSpell && helpBoxRect == null) pageSerial++
                   settleDone = false
                   ui.removeCallbacks(settleRun)
                   settlePosted = false
@@ -5543,12 +5556,7 @@ jobs:
                   })
                   addRow({ "開啟本章攻略" }, {
                       closeMenu()
-                      val c = ChapterGuide.current(applicationContext)
-                      val info = ChapterGuide.chapterInfo(applicationContext, c)
-                      val gi = Intent(this, GuideActivity::class.java)
-                      gi.putExtra("page", info?.start ?: 27)
-                      gi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                      startActivity(gi)
+                      showWalk()
                   })
                   addRow({ "開啟攻略本" }, {
                       closeMenu()
@@ -5823,6 +5831,7 @@ jobs:
               }
 
               private fun showResult(list: List<ResultView.Item>) {
+                  if (destroyed) return
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   val isSpell = list.size == 1 && list[0].orig.startsWith("\u0001")
                   if (!isSpell) showGuideHint(list.joinToString(" ") { x -> x.orig + " " + x.text })
@@ -5914,6 +5923,7 @@ jobs:
               private val hideChipRun = Runnable { hideGuideHint() }
 
               private fun showGuideHint(text: String) {
+                  if (destroyed) return
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   // 章節判斷一直在背景進行 (就算提示關掉,也會記住玩到哪)
                   val chap = ChapterGuide.update(applicationContext, text)
@@ -6034,6 +6044,7 @@ jobs:
               }
 
               private fun showWalk() {
+                  if (destroyed) return
                   val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
                   prefs.edit().putBoolean("wt_on", true).apply()
                   if (walkPanel != null) {
@@ -6191,7 +6202,17 @@ jobs:
 
               // ---------------------------------------------------------------- 結束
 
+              override fun onTaskRemoved(rootIntent: Intent?) {
+                  stopSelf()
+                  super.onTaskRemoved(rootIntent)
+              }
+
+              @Volatile
+              private var destroyed = false
+
               override fun onDestroy() {
+                  destroyed = true
+                  ui.removeCallbacksAndMessages(null)
                   hideWalk()
                   try {
                       val hv = helpView
