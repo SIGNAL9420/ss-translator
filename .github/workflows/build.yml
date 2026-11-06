@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 10
-                  versionName = "3.37"
+                  versionCode = 11
+                  versionName = "3.38"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.37 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.38 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -5175,6 +5175,52 @@ jobs:
                           val mean = sum / ((y1 - y0) * (x1 - x0))
                           px[y * w + x] = if (mean - lum[y * w + x] > 16) black else white
                       }
+                  }
+                  // 去掉背景線條:石階、地磚的邊是又長又細的黑線,字的筆畫則是短的;把太寬或太散的黑色連通塊擦掉
+                  try {
+                      val seen = BooleanArray(w * h)
+                      val stack = IntArray(w * h)
+                      val comp = IntArray(w * h)
+                      for (start in 0 until w * h) {
+                          if (seen[start] || px[start] != black) continue
+                          var sp = 0
+                          var n = 0
+                          stack[sp++] = start
+                          seen[start] = true
+                          var minX = w
+                          var maxX = 0
+                          var minY = h
+                          var maxY = 0
+                          while (sp > 0) {
+                              val cur = stack[--sp]
+                              comp[n++] = cur
+                              val cx = cur % w
+                              val cy = cur / w
+                              if (cx < minX) minX = cx
+                              if (cx > maxX) maxX = cx
+                              if (cy < minY) minY = cy
+                              if (cy > maxY) maxY = cy
+                              for (dy in -1..1) {
+                                  val ny = cy + dy
+                                  if (ny < 0 || ny >= h) continue
+                                  for (dx in -1..1) {
+                                      val nx = cx + dx
+                                      if (nx < 0 || nx >= w) continue
+                                      val ni = ny * w + nx
+                                      if (!seen[ni] && px[ni] == black) {
+                                          seen[ni] = true
+                                          stack[sp++] = ni
+                                      }
+                                  }
+                              }
+                          }
+                          val bw = maxX - minX + 1
+                          val bh = maxY - minY + 1
+                          val wipe = n < 5 || bw > 170 * scale / 2f || bh > 130 * scale / 2f || (bw > 60 * scale / 2f && bh * 6 < bw)
+                          if (wipe) for (k in 0 until n) px[comp[k]] = white
+                      }
+                  } catch (e: Exception) {
+                      // 清不掉就用原本的
                   }
                   val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                   out.setPixels(px, 0, w, 0, 0, w, h)
