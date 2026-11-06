@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 11
-                  versionName = "3.38"
+                  versionCode = 12
+                  versionName = "3.39"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.38 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.39 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3949,6 +3949,9 @@ jobs:
                       variants.add(Pair(goldMask(src, 2f), 2f))
                       // 字色跟背景太像 (土黃字疊在土黃石板地) 時,只靠字邊那圈深色外框: 比周圍暗的點留下當黑字
                       variants.add(Pair(outlineMask(src, 2f), 2f))
+                      // 背景相減:用最近幾句對白同一位置的「中間值」當乾淨背景,跟這張相減,只剩字
+                      val bm = bgMask(src, 2f)
+                      if (bm != null) variants.add(Pair(bm, 2f))
                   }
 
                   val raw = StringBuilder()
@@ -4434,6 +4437,7 @@ jobs:
                               // latestCrop 就是 old
                           }
                           latestCrop = null
+                          bgAdd(old)
                           autoQueue.addLast(Pair(old, latestTop))
                           while (autoQueue.size > 8) {
                       autoQueue.removeFirst().first.recycle()
@@ -5122,6 +5126,7 @@ jobs:
                           }
                           // 外框版本比較容易有雜點,要明顯讀得比別的版本多才採用
                           if (c.v == 3) q = q * 85 / 100
+                          if (c.v == 4) q = q * 115 / 100
                           score[c.v] = (score[c.v] ?: 0) + q
                       }
                       var bestV = -1
@@ -5141,6 +5146,124 @@ jobs:
               }
 
               // 找字邊的深色外框 (黑字白底):比周圍小方塊平均暗一截的點才算
+              // ---- 背景相減 ----
+              private val bgSamples = ArrayList<IntArray>()
+              private var bgW = 0
+              private var bgH = 0
+              private var bgMed: IntArray? = null
+              private val bgLock = Any()
+
+              private fun colDiff(a: Int, b: Int): Int =
+                  Math.abs(((a shr 16) and 0xFF) - ((b shr 16) and 0xFF)) +
+                      Math.abs(((a shr 8) and 0xFF) - ((b shr 8) and 0xFF)) +
+                      Math.abs((a and 0xFF) - (b and 0xFF))
+
+              // 每換一頁對白,把上一頁定格的那張存起來;不同句的字位置不同,取每個點的中間值就是沒有字的背景
+              private fun bgAdd(b: Bitmap) {
+                  try {
+                      val w = b.width
+                      val h = b.height
+                      val px = IntArray(w * h)
+                      b.getPixels(px, 0, w, 0, 0, w, h)
+                      bgHandler.post { bgAddPx(px, w, h) }
+                  } catch (e: Throwable) {
+                      // 忽略
+                  }
+              }
+
+              private fun bgAddPx(px: IntArray, w: Int, h: Int) {
+                  try {
+                      synchronized(bgLock) {
+                          if (w != bgW || h != bgH) {
+                              bgSamples.clear()
+                              bgMed = null
+                              bgW = w
+                              bgH = h
+                          }
+                          val ref = bgMed ?: bgSamples.lastOrNull()
+                          if (ref != null) {
+                              var n = 0
+                              var d = 0
+                              var i = 0
+                              while (i < px.size) {
+                                  n++
+                                  if (colDiff(px[i], ref[i]) > 70) d++
+                                  i += 7
+                              }
+                              // 一大半的點都不一樣 = 換了場景,重新累積
+                              if (d * 100 > n * 40) {
+                                  bgSamples.clear()
+                                  bgMed = null
+                              }
+                          }
+                          bgSamples.add(px)
+                          while (bgSamples.size > 9) bgSamples.removeAt(0)
+                          if (bgSamples.size >= 5) {
+                              val k = bgSamples.size
+                              val med = IntArray(px.size)
+                              val rr = IntArray(k)
+                              val gg = IntArray(k)
+                              val bb = IntArray(k)
+                              for (i in px.indices) {
+                                  for (j in 0 until k) {
+                                      val c = bgSamples[j][i]
+                                      rr[j] = (c shr 16) and 0xFF
+                                      gg[j] = (c shr 8) and 0xFF
+                                      bb[j] = c and 0xFF
+                                  }
+                                  java.util.Arrays.sort(rr, 0, k)
+                                  java.util.Arrays.sort(gg, 0, k)
+                                  java.util.Arrays.sort(bb, 0, k)
+                                  med[i] = (0xFF shl 24) or (rr[k / 2] shl 16) or (gg[k / 2] shl 8) or bb[k / 2]
+                              }
+                              bgMed = med
+                          }
+                      }
+                  } catch (e: Throwable) {
+                      // 忽略
+                  }
+              }
+
+              private fun bgClear() {
+                  synchronized(bgLock) {
+                      bgSamples.clear()
+                      bgMed = null
+                  }
+              }
+
+              private fun bgMask(src: Bitmap, scale: Float): Bitmap? {
+                  try {
+                      val med = synchronized(bgLock) { if (src.width == bgW && src.height == bgH) bgMed else null } ?: return null
+                      val w = src.width
+                      val h = src.height
+                      val px = IntArray(w * h)
+                      src.getPixels(px, 0, w, 0, 0, w, h)
+                      val black = 0xFF000000.toInt()
+                      val white = 0xFFFFFFFF.toInt()
+                      var cnt = 0
+                      val out = IntArray(w * h)
+                      for (i in px.indices) {
+                          if (colDiff(px[i], med[i]) > 70) {
+                              out[i] = black
+                              cnt++
+                          } else {
+                              out[i] = white
+                          }
+                      }
+                      // 幾乎沒有字,或一大半都不一樣 (場景換了):這個版本不用
+                      if (cnt * 1000 < px.size * 3 || cnt * 100 > px.size * 45) return null
+                      val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                      bm.setPixels(out, 0, w, 0, 0, w, h)
+                      val sw = (w * scale).toInt()
+                      val sh = (h * scale).toInt()
+                      val big = Bitmap.createScaledBitmap(bm, sw, sh, true)
+                      if (big !== bm) bm.recycle()
+                      return big
+                  } catch (e: Throwable) {
+                      return null
+                  }
+              }
+
               private fun outlineMask(src: Bitmap, scale: Float): Bitmap {
                   val w = (src.width * scale).toInt()
                   val h = (src.height * scale).toInt()
@@ -5573,22 +5696,6 @@ jobs:
                           closeMenu()
                           showWalk()
                       }
-                  })
-                  addRow({ "上次耗時:辨識 " + lastOcrMs + " 毫秒、翻譯 " + lastTrMs + " 毫秒" }, { })
-                  addRow({
-                      if (statGapN == 0 && statLatN == 0) "對話統計:還沒有資料 (玩一段對話後再來看)"
-                      else "對話統計:換句間隔最短 " + (if (statMinGap == Long.MAX_VALUE) 0 else statMinGap) + " 毫秒、平均 " +
-                          (if (statGapN > 0) statGapSum / statGapN else 0) + " 毫秒;漏掉畫面 " + statDrops + " 次;一句翻完平均 " +
-                          (if (statLatN > 0) statLatSum / statLatN else 0) + " 毫秒、最久 " + statLatMax + " 毫秒 (點一下歸零)"
-                  }, {
-                      statLastChangeAt = 0L
-                      statMinGap = Long.MAX_VALUE
-                      statGapSum = 0L
-                      statGapN = 0
-                      statDrops = 0
-                      statLatSum = 0L
-                      statLatN = 0
-                      statLatMax = 0L
                   })
                   addRow({
                       val c = ChapterGuide.current(applicationContext)
