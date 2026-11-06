@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 4
-                  versionName = "3.30"
+                  versionCode = 6
+                  versionName = "3.33"
               }
 
               buildTypes {
@@ -180,6 +180,10 @@ jobs:
           フィリオネル=菲力歐奈爾
 
           # --- 角色 (攻略本) ---
+          ラークーディアーフレイムドール=拉克·迪亞·弗雷姆朵爾
+          ラークーディアフレイムドール=拉克·迪亞·弗雷姆朵爾
+          ラーク＝ディア＝フレイムドール=拉克·迪亞·弗雷姆朵爾
+          フレイムドール=弗雷姆朵爾
           ラーク=拉克
           リネア=莉內亞
           フォシグ=霍克
@@ -662,6 +666,56 @@ jobs:
           95|敵人資料
           96|小型遊戲資料
           97|版權頁
+          __SSFILE_EOF__
+          cat > 'app/src/main/assets/helprules.txt' <<'__SSFILE_EOF__'
+          # HELP 說明專用的片語對照 (日文=台灣繁體中文)。只用在 HELP 說明框,不會影響對話翻譯。
+          # 比對時會自動忽略日文裡的「、」,長的片語優先。沒對到的部分才交給翻譯引擎。
+          指定した場所とそのまわりを直に攻撃しますので=會直接攻擊指定地點及其周圍,所以
+          指定した場所とそのまわりを直接攻撃しますので=會直接攻擊指定地點及其周圍,所以
+          指定した場所とそのまわりに対して直接攻撃します=直接攻擊指定地點及其周圍
+          指定した場所とそのまわりを直接攻撃します=直接攻擊指定地點及其周圍
+          指定した場所とそのまわりを直に攻撃します=直接攻擊指定地點及其周圍
+          指定した場所と=指定地點及
+          指定した場所=指定地點
+          そのまわり=其周圍
+          味方を巻き込むおそれはありません=不會波及我方
+          味方を巻き込むおそれはない=不會波及我方
+          味方を巻き込まない=不會波及我方
+          味方を巻き込む=波及我方
+          敵味方かんけいなく=不分敵我
+          敵味方関係なく=不分敵我
+          はんい内なら=只要在範圍內
+          範囲内なら=只要在範圍內
+          はんい内=範圍內
+          範囲内=範圍內
+          ダメージをあたえます=造成傷害
+          ダメージをあたえる=造成傷害
+          前方3ヘックスに攻撃します=攻擊前方3格
+          前方3ヘックスに=對前方3格
+          前方3ヘックス=前方3格
+          ヘックス=格
+          指定位置発動バージョン=指定位置發動版
+          指定位置発動=指定位置發動
+          の広はんいに効果のあるバージョン=的廣範圍效果版
+          の広範囲に効果のあるバージョン=的廣範圍效果版
+          の広い範囲に効果のあるバージョン=的廣範圍效果版
+          広はんいに効果のある=對廣範圍有效的
+          広範囲に効果のある=對廣範圍有效的
+          の方向指定型バージョン=的方向指定型
+          方向指定型=方向指定型
+          の強化バージョン=的強化版
+          強化バージョン=強化版
+          バージョン=版
+          魔族などにも効果がある=對魔族等也有效
+          魔族に効果がある=對魔族有效
+          効果がある=有效
+          黒魔法=黑魔法
+          白魔法=白魔法
+          精霊魔法=精靈魔法
+          のひとつ=之一
+          攻撃します=攻擊
+          攻撃する=攻擊
+          回復します=回復
           __SSFILE_EOF__
           cat > 'app/src/main/assets/spellhelp.txt' <<'__SSFILE_EOF__'
           # HELP 說明的固定譯文 (遊戲畫面上的日文說明 | 台灣繁體中文)。辨識到相近的日文就直接用這裡的,不再現場翻譯
@@ -1611,7 +1665,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.30 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.33 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -2562,6 +2616,66 @@ jobs:
                   return Pair(sp.name, t.substring(i).trimStart { c -> c in dots })
               }
 
+              /** HELP 說明專用:把說明文字裡有對照規則的片語換成固定中文 (前後用 \uE000 \uE001 包起來),沒對到的日文留著給翻譯引擎 */
+              private var hrules: List<Pair<Regex, String>>? = null
+
+              fun helpRuleApply(ctx: Context, text: String): String {
+                  var rl = hrules
+                  if (rl == null) {
+                      val l = ArrayList<Pair<String, String>>()
+                      try {
+                          ctx.assets.open("helprules.txt").bufferedReader(Charsets.UTF_8).useLines { seq ->
+                              for (ln in seq) {
+                                  val t = ln.trim()
+                                  if (t.isEmpty() || t.startsWith("#")) continue
+                                  val e = t.indexOf('=')
+                                  if (e <= 0) continue
+                                  l.add(Pair(t.substring(0, e), t.substring(e + 1)))
+                              }
+                          }
+                      } catch (e: Exception) {
+                      }
+                      rl = l.sortedByDescending { x -> x.first.length }.map { x ->
+                          Pair(Regex(x.first.map { c -> Regex.escape(c.toString()) }.joinToString("、?")), x.second)
+                      }
+                      hrules = rl
+                  }
+                  // 一次掃過,已換成中文的部分不會再被後面的規則改到
+                  val big = Regex(rl.joinToString("|") { x -> "(" + x.first.pattern + ")" })
+                  return big.replace(text) { m ->
+                      var idx = -1
+                      for (g in 1..m.groups.size - 1) {
+                          if (m.groups[g] != null) {
+                              idx = g - 1
+                              break
+                          }
+                      }
+                      if (idx >= 0) "\uE000" + rl[idx].second + "\uE001" else m.value
+                  }
+              }
+
+              /** 名稱+效果說明分開 (名稱後面的變化版字母 B/S/C/F/N 一定要留下來) */
+              fun helpSplit(ctx: Context, jp: String): Pair<String, String>? {
+                  val t = jp.replace(" ", "").replace("　", "")
+                  val m = Regex("^([゠-ヿ・·•]{4,}?)([A-Za-zＡ-Ｚ0-9８５]?)[・·•.．…‥]{2,}(.+)$").find(t)
+                  if (m != null) {
+                      val base = m.groupValues[1].trimEnd('・', '·', '•')
+                      val l = m.groupValues[2]
+                      var sp = match(ctx, base + l)
+                      if (sp != null && l.isNotEmpty() && sp.key.last() !in "SCBFN") {
+                          val want = when (l.uppercase()[0]) {
+                              '8', 'Ｂ' -> 'B'
+                              '5', '５', 'Ｓ' -> 'S'
+                              else -> l.uppercase()[0]
+                          }
+                          val v = load(ctx).firstOrNull { x -> x.key.length == sp!!.key.length + 1 && x.key.startsWith(sp!!.key) && x.key.last() == want }
+                          if (v != null) sp = v
+                      }
+                      if (sp != null) return Pair(sp.name, m.groupValues[3])
+                  }
+                  return splitHelp(ctx, jp)
+              }
+
               /** HELP 說明開頭「魔法名稱(含變化版字母)」那一段,用來確認兩次辨識是不是同一個魔法 */
               fun helpHead(jp: String): String {
                   val t = jp.replace(" ", "").replace("　", "")
@@ -3113,8 +3227,18 @@ jobs:
                   }
               }
 
-              private fun showHelpBox(zh: String, r0: Rect, jp: String = "") {
+              // 說明框的位置和高度在同一次 HELP 期間固定 (每一張畫面辨識到的位置會差幾個像素,以前兩個框會跟著上下抖)
+              private var helpLock: Rect? = null
+              private var helpLockH = 0
+
+              private fun showHelpBox(zh: String, rIn: Rect, jp: String = "") {
                   helpMiss = 0
+                  val lk = helpLock
+                  val r0 = if (lk != null && Math.abs(rIn.top - lk.top) < dp(40) && Math.abs(rIn.left - lk.left) < dp(40)) lk else {
+                      helpLock = Rect(rIn)
+                      helpLockH = 0
+                      rIn
+                  }
                   val wmgr = getSystemService(Context.WINDOW_SERVICE) as WindowManager
                   var v = helpView
                   val fresh = v == null
@@ -3142,7 +3266,8 @@ jobs:
                       View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
                   )
                   val maxH = maxOf(dp(80), readMetrics()[1] - r0.top - dp(120))
-                  val h = minOf(v.measuredHeight, maxH)
+                  val h = minOf(maxOf(v.measuredHeight, helpLockH), maxH)
+                  helpLockH = h
                   val r = Rect(r0.left, r0.top, r0.right, r0.top + h)
                   if (fresh) {
                       val lp = WindowManager.LayoutParams(
@@ -3184,6 +3309,8 @@ jobs:
 
               private fun hideHelpBox() {
                   helpBoxRect = null
+                  helpLock = null
+                  helpLockH = 0
                   helpMiss = 0
                   helpView?.visibility = View.GONE
                   layoutOverlays()
@@ -3716,23 +3843,41 @@ jobs:
                       try {
                           // 平常 (沒有魔法選單) 用縮小一半的圖快速確認,選單開著時才用原圖仔細看,對話翻譯才快
                           val menuActive = lastWasSpell || helpBoxRect != null
+                          fun looksLike(qt: com.google.mlkit.vision.text.Text): Boolean {
+                              val all = qt.text.uppercase()
+                              // 只認真的魔法選單才有的字:「呪文をえらんでね」、PAGE n/m、HELP+NEXT/END。單獨的「呪文設定」「えらんで」不算
+                              val flat = all.replace(" ", "").replace("　", "")
+                              if (Regex("PAGE[0-9]").containsMatchIn(flat)) return true
+                              if (flat.contains("HELP") && (flat.contains("NEXT") || flat.contains("END"))) return true
+                              if (flat.contains("呪文を") || flat.contains("呪文をえ") || flat.contains("文をえらんで")) return true
+                              if (flat.contains("HELP") && !flat.contains("呪文設定")) return true
+                              for (bl in qt.textBlocks) {
+                                  for (ln in bl.lines) {
+                                      if (SpellGuide.match(applicationContext, ln.text) != null) return true
+                                  }
+                              }
+                              return false
+                          }
+                          if (menuActive) {
+                              // 選單開著時,先用縮小一半的圖很快看一眼:已經看不到選單了就馬上收起來 (後面用原圖仔細確認,看錯了會再出現)
+                              val half = Bitmap.createScaledBitmap(src, maxOf(1, src.width / 2), maxOf(1, src.height / 2), true)
+                              val q0 = try {
+                                  Tasks.await(rec.process(InputImage.fromBitmap(half, 0)), 6, TimeUnit.SECONDS)
+                              } finally {
+                                  half.recycle()
+                              }
+                              if (!looksLike(q0)) ui.post {
+                                  hideHelpBox()
+                                  if (lastWasSpell) hideOverlay()
+                              }
+                          }
                           val gateBmp = if (menuActive) src else Bitmap.createScaledBitmap(src, maxOf(1, src.width / 2), maxOf(1, src.height / 2), true)
                           val qt = try {
                               Tasks.await(rec.process(InputImage.fromBitmap(gateBmp, 0)), 6, TimeUnit.SECONDS)
                           } finally {
                               if (gateBmp !== src) gateBmp.recycle()
                           }
-                          val all = qt.text.uppercase()
-                          if (all.contains("PAGE") || all.contains("HELP") || all.contains("STEP") || all.contains("HIT") || all.contains("えらんで") || all.contains("呪文")) looksMenu = true
-                          if (!looksMenu) {
-                              var n = 0
-                              for (bl in qt.textBlocks) {
-                                  for (ln in bl.lines) {
-                                      if (SpellGuide.match(applicationContext, ln.text) != null) n++
-                                  }
-                              }
-                              if (n >= 1) looksMenu = true
-                          }
+                          looksMenu = looksLike(qt)
                       } catch (e: Exception) {
                           looksMenu = false
                       }
@@ -3883,7 +4028,7 @@ jobs:
                           } else {
                               try {
                                   // 魔法名稱用固定譯名,效果說明照畫面內容翻譯
-                                  val sh = SpellGuide.splitHelp(applicationContext, helpJp)
+                                  val sh = SpellGuide.helpSplit(applicationContext, helpJp)
                                   val z = if (sh != null && sh.second.length >= 4) sh.first + ":" + translateHelpPart(tr, sh.second, engine) else if (sh != null) sh.first else translateHelpPart(tr, helpJp, engine)
                                   if (z.isNotBlank()) {
                                       helpZh = z
@@ -3996,7 +4141,7 @@ jobs:
                       m.text = tidyJp(m.text)
                       if (m.text.length < 2) continue
                       // 只有角色名字、或太短的碎字 (狀態欄的名字、畫面雜訊) 不當對話翻
-                      if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 3 && m.text.last() !in "。！？!?」』♪♥♡…~～"))) continue
+                      if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 4 && m.text.last() !in "。！？!?」』♪♥♡…~～"))) continue
                       if (auto && merged.size == 1) {
                           // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
                           out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
@@ -4044,8 +4189,21 @@ jobs:
                       val bs = (0 until sL.length - 1).map { i -> sL.substring(i, i + 2) }
                       bs.count { b -> sO.contains(b) } * 10 >= bs.size * 8
                   }
+                  // 辨識來回跳 (A、B、A、B):這一筆跟前面幾筆 (10 秒內) 的某一句很像,就是同一句換了寫法,不要再加一行
+                  if (history.size >= 2 && sO.length >= 6) {
+                      val nowH = SystemClock.uptimeMillis()
+                      for (k in history.size - 2 downTo maxOf(0, history.size - 4)) {
+                          val e = history[k]
+                          if (nowH - e.at > 10000L) continue
+                          val se = e.orig.filter { c -> c.isLetterOrDigit() }
+                          if (se.length < 6) continue
+                          if (sameSentence(orig, e.orig) || levDist(sO, se) <= maxOf(2, minOf(sO.length, se.length) / 3)) return
+                      }
+                  }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
                       (levDist(sL, sO.take(sL.length)) <= tol || partOf)
+                  // 跟上一筆長度差不多、只有幾個字辨識不同 (不是逐字長出來) → 同一句,不另外加一行
+                  if (last != null && !grown && sL.length >= 6 && Math.abs(sO.length - sL.length) <= 2 && levDist(sO, sL) <= maxOf(2, sL.length / 3)) return
                   if (last != null && !grown && last.zh != "…" && nO.length <= nL.length + 1 && sameSentence(orig, last.orig)) {
                       // 同一句重新辨識只差一兩個字:保留已經翻好的,不要讓譯文跳來跳去
                       return
@@ -4274,7 +4432,8 @@ jobs:
                   latestCrop = crop
                   // 魔法選單 / HELP 只看最新畫面,停住 0.2 秒後才辨識
                   ui.removeCallbacks(stableRun)
-                  ui.postDelayed(stableRun, 200)
+                  // 選單開著時畫面大幅改變 (選單關掉、換成對話) 就不用多等,馬上辨識
+                  ui.postDelayed(stableRun, if (bigChange && (lastWasSpell || helpBoxRect != null)) 50 else 200)
               }
 
               // 背景翻譯:整句日文已經記在譯文框裡,翻好再換成中文;按太快的句子也會一句一句翻完
@@ -4758,33 +4917,47 @@ jobs:
 
               private fun translateHelpPart(tr: Translator, jp: String, engine: String): String {
                   val terms = ArrayList<String>()
-                  val pre = SpellGuide.replaceNames(applicationContext, jp, terms)
-                  if (terms.isEmpty()) return translateSentences(tr, pre, engine)
-                  // 「(前面說明)魔法名の○○バージョン。」這種固定句型,直接組句,不交給翻譯引擎重排
-                  val pm = Regex("^(.*?)W([0-9]+)Wの(.+?)バ[ー一ｰ-]?ジョン[。.]?$").find(pre.replace(" ", ""))
-                  if (pm != null) {
-                      val n = pm.groupValues[2].toIntOrNull() ?: 0
-                      if (n in 1..terms.size) {
-                          val head = pm.groupValues[1]
-                          val mid = pm.groupValues[3]
-                          val hz = if (head.isBlank()) "" else translateText(tr, head, engine).trimEnd('。', '.', ' ') + "。"
-                          val mz = if (mid == "強化") "強化" else translateText(tr, mid, engine).trimEnd('。', '.', ' ')
-                          return hz + terms[n - 1] + "的" + mz + "版。"
+                  // 說明裡出現的魔法名先換成暗號 W1W (只在本機處理,不送翻譯引擎)
+                  val pre = SpellGuide.replaceNames(applicationContext, jp.replace(" ", "").replace("　", ""), terms)
+                  // 有對照規則的片語直接換成固定中文,沒對到的才交給翻譯引擎
+                  val ruled = SpellGuide.helpRuleApply(applicationContext, pre)
+                  val sb = StringBuilder()
+                  val rx = Regex("\uE000(.*?)\uE001|([^\uE000\uE001]+)")
+                  for (m in rx.findAll(ruled)) {
+                      val fixed = m.groups[1]
+                      if (fixed != null) {
+                          sb.append(fixed.value)
+                          continue
+                      }
+                      val seg = m.groups[2]!!.value
+                      // 暗號、標點、英數字照原樣,只有含假名的日文才翻
+                      val parts = Regex("W[0-9]+W|[一-龯]*[゠-ヿぁ-ゟ][゠-ヿぁ-ゟー一-龯]*|[^゠-ヿぁ-ゟ一-龯]+|[一-龯]+").findAll(seg)
+                      for (pm in parts) {
+                          val v = pm.value
+                          if (Regex("[゠-ヿぁ-ゟ]").containsMatchIn(v)) {
+                              val onlyParticle = v.length <= 1 && "のはをがにでとも".contains(v)
+                              if (onlyParticle) {
+                                  if (v == "の") sb.append("的")
+                              } else {
+                                  sb.append(translateText(tr, v, engine).trimEnd('。', '.', ' '))
+                              }
+                          } else {
+                              sb.append(v)
+                          }
                       }
                   }
-                  val z = translateSentences(tr, pre, engine)
-                  val seen = HashSet<Int>()
-                  val out = Regex("[Ww]\\s*([0-9]+)\\s*[Ww]").replace(z) { m ->
+                  var out = sb.toString().replace("、", "，").replace(",", "，")
+                  out = Regex("W([0-9]+)Wの").replace(out) { m -> "W" + m.groupValues[1] + "W的" }
+                  out = Regex("W([0-9]+)W").replace(out) { m ->
                       val n = m.groupValues[1].toIntOrNull() ?: 0
-                      if (n in 1..terms.size) {
-                          seen.add(n)
-                          terms[n - 1]
-                      } else {
-                          m.value
-                      }
+                      if (n in 1..terms.size) terms[n - 1] else m.value
                   }
-                  if (seen.size == terms.size) return out
-                  return translateText(tr, SpellGuide.replaceNames(applicationContext, jp), engine)
+                  // 多出來或不成對的括號拿掉
+                  val open = out.count { c -> c == '(' || c == '（' }
+                  val close = out.count { c -> c == ')' || c == '）' }
+                  if (open != close) out = out.replace("(", "").replace(")", "").replace("（", "").replace("）", "")
+                  out = out.trim().trimEnd('.', '。', '，')
+                  return if (out.isEmpty()) out else "$out。"
               }
 
               private fun translateOne(tr: Translator, jp: String, engine: String): String {
