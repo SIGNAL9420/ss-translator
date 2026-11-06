@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 15
-                  versionName = "3.42"
+                  versionCode = 16
+                  versionName = "3.43"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.42 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.43 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -5220,7 +5220,7 @@ jobs:
                           }
                           bgSamples.add(px)
                           while (bgSamples.size > 9) bgSamples.removeAt(0)
-                          if (bgSamples.size >= 5) {
+                          if (bgSamples.size >= 3) {
                               val k = bgSamples.size
                               val med = IntArray(px.size)
                               val rr = IntArray(k)
@@ -5253,6 +5253,78 @@ jobs:
                   }
               }
 
+              // 先膨脹再收縮 (補洞),半徑 r 的方形
+              private fun morphClose(src: ByteArray, w: Int, h: Int, r: Int): ByteArray {
+                  val tmp = ByteArray(w * h)
+                  val dil = ByteArray(w * h)
+                  // 膨脹:水平再垂直
+                  for (y in 0 until h) {
+                      val row = y * w
+                      for (x in 0 until w) {
+                          var v = 0
+                          var xx = maxOf(0, x - r)
+                          val xe = minOf(w - 1, x + r)
+                          while (xx <= xe) {
+                              if (src[row + xx].toInt() != 0) {
+                                  v = 1
+                                  break
+                              }
+                              xx++
+                          }
+                          tmp[row + x] = v.toByte()
+                      }
+                  }
+                  for (y in 0 until h) {
+                      for (x in 0 until w) {
+                          var v = 0
+                          var yy = maxOf(0, y - r)
+                          val ye = minOf(h - 1, y + r)
+                          while (yy <= ye) {
+                              if (tmp[yy * w + x].toInt() != 0) {
+                                  v = 1
+                                  break
+                              }
+                              yy++
+                          }
+                          dil[y * w + x] = v.toByte()
+                      }
+                  }
+                  // 收縮:水平再垂直 (圖外當作有字,不從邊邊吃進來)
+                  for (y in 0 until h) {
+                      val row = y * w
+                      for (x in 0 until w) {
+                          var v = 1
+                          var xx = maxOf(0, x - r)
+                          val xe = minOf(w - 1, x + r)
+                          while (xx <= xe) {
+                              if (dil[row + xx].toInt() == 0) {
+                                  v = 0
+                                  break
+                              }
+                              xx++
+                          }
+                          tmp[row + x] = v.toByte()
+                      }
+                  }
+                  val out = ByteArray(w * h)
+                  for (y in 0 until h) {
+                      for (x in 0 until w) {
+                          var v = 1
+                          var yy = maxOf(0, y - r)
+                          val ye = minOf(h - 1, y + r)
+                          while (yy <= ye) {
+                              if (tmp[yy * w + x].toInt() == 0) {
+                                  v = 0
+                                  break
+                              }
+                              yy++
+                          }
+                          out[y * w + x] = v.toByte()
+                      }
+                  }
+                  return out
+              }
+
               private fun bgMask(src: Bitmap, scale: Float, topOffset: Int): Bitmap? {
                   try {
                       val y0 = bgY0(src.height, topOffset)
@@ -5264,11 +5336,18 @@ jobs:
                       src.getPixels(px, 0, w, 0, y0, w, bh)
                       val black = 0xFF000000.toInt()
                       val white = 0xFFFFFFFF.toInt()
+                      // 門檻放低一點 (遊戲的字是點點組成,筆畫有斷),再用 5x5 補洞把斷掉的筆畫接起來;
+                      // 用電腦上的日文辨識器拿你的截圖測過,比門檻 70 不補洞準很多
+                      var m = ByteArray(w * bh)
+                      for (i in px.indices) {
+                          if (colDiff(px[i], med[i]) > 28) m[i] = 1
+                      }
+                      m = morphClose(m, w, bh, 2)
                       var cnt = 0
                       val out = IntArray(w * h)
                       java.util.Arrays.fill(out, white)
-                      for (i in px.indices) {
-                          if (colDiff(px[i], med[i]) > 70) {
+                      for (i in m.indices) {
+                          if (m[i].toInt() != 0) {
                               out[y0 * w + i] = black
                               cnt++
                           }
