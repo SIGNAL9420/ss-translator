@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 6
-                  versionName = "3.33"
+                  versionCode = 9
+                  versionName = "3.36"
               }
 
               buildTypes {
@@ -716,6 +716,21 @@ jobs:
           攻撃します=攻擊
           攻撃する=攻擊
           回復します=回復
+          術者と周囲4ヘックス内にいる全てのユニットを眠らせます=使施術者及周圍4格內的所有單位陷入沉睡
+          術者と周囲4ヘックス内にいる全てのユニットを=施術者及周圍4格內的所有單位
+          術者と周囲=施術者及周圍
+          周囲4ヘックス内=周圍4格內
+          周囲=周圍
+          全てのユニット=所有單位
+          ユニットを眠らせます=使單位陷入沉睡
+          を眠らせます=陷入沉睡
+          眠らせる魔法のナーガ様専用バージョン=讓人入睡的魔法,那加大人專用版
+          眠らせる魔法の=讓人入睡的魔法的
+          眠らせる魔法=讓人入睡的魔法
+          ナーガ様専用バージョン=那加大人專用版
+          ナーガ様専用=那加大人專用
+          専用バージョン=專用版
+          専用型=專用型
           __SSFILE_EOF__
           cat > 'app/src/main/assets/spellhelp.txt' <<'__SSFILE_EOF__'
           # HELP 說明的固定譯文 (遊戲畫面上的日文說明 | 台灣繁體中文)。辨識到相近的日文就直接用這裡的,不再現場翻譯
@@ -1665,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.33 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.36 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3851,12 +3866,14 @@ jobs:
                               if (flat.contains("HELP") && (flat.contains("NEXT") || flat.contains("END"))) return true
                               if (flat.contains("呪文を") || flat.contains("呪文をえ") || flat.contains("文をえらんで")) return true
                               if (flat.contains("HELP") && !flat.contains("呪文設定")) return true
+                              var nameLines = 0
                               for (bl in qt.textBlocks) {
                                   for (ln in bl.lines) {
-                                      if (SpellGuide.match(applicationContext, ln.text) != null) return true
+                                      if (SpellGuide.match(applicationContext, ln.text) != null) nameLines++
                                   }
                               }
-                              return false
+                              // 對話裡剛好出現一個魔法名稱不算魔法選單;選單清單一定有好幾行魔法名稱
+                              return nameLines >= 2
                           }
                           if (menuActive) {
                               // 選單開著時,先用縮小一半的圖很快看一眼:已經看不到選單了就馬上收起來 (後面用原圖仔細確認,看錯了會再出現)
@@ -3930,6 +3947,8 @@ jobs:
                   if (!menuFrame) {
                       // 魔法選單 / HELP 的字是白字或粉紅字,不需要反相和金色版本,少做兩個比較快
                       variants.add(Pair(goldMask(src, 2f), 2f))
+                      // 字色跟背景太像 (土黃字疊在土黃石板地) 時,只靠字邊那圈深色外框: 比周圍暗的點留下當黑字
+                      variants.add(Pair(outlineMask(src, 2f), 2f))
                   }
 
                   val raw = StringBuilder()
@@ -4059,7 +4078,8 @@ jobs:
                   val spellHits = ArrayList<SpellGuide.Spell>()
                   val spellMiss = ArrayList<String>()
                   for (b in blocks.sortedBy { x -> x.rect.top }) {
-                      val sp = SpellGuide.match(applicationContext, b.text)
+                      // 辨識錯了幾個字的魔法名 (例如ブラム・ブレイザー被認成プラム・ルザー) 放寬一點再比對一次,免得顯示「找不到」
+                      val sp = SpellGuide.match(applicationContext, b.text) ?: if (menuFrame) SpellGuide.match(applicationContext, b.text, 0.5f) else null
                       if (sp != null) {
                           if (spellHits.none { x -> x.key == sp.key }) spellHits.add(sp)
                       } else if (SpellGuide.charOf(b.text) == null) {
@@ -4142,6 +4162,7 @@ jobs:
                       if (m.text.length < 2) continue
                       // 只有角色名字、或太短的碎字 (狀態欄的名字、畫面雜訊) 不當對話翻
                       if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 4 && m.text.last() !in "。！？!?」』♪♥♡…~～"))) continue
+                      if (auto && merged.size == 1 && engine == "smart") rememberCrop(m.text, src)
                       if (auto && merged.size == 1) {
                           // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
                           out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
@@ -4197,11 +4218,17 @@ jobs:
                           if (nowH - e.at > 10000L) continue
                           val se = e.orig.filter { c -> c.isLetterOrDigit() }
                           if (se.length < 6) continue
-                          if (sameSentence(orig, e.orig) || levDist(sO, se) <= maxOf(2, minOf(sO.length, se.length) / 3)) return
+                          if ((sO.length >= 8 && se.contains(sO)) || sameSentence(orig, e.orig) || levDist(sO, se) <= maxOf(2, minOf(sO.length, se.length) / 3)) return
                       }
                   }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
                       (levDist(sL, sO.take(sL.length)) <= tol || partOf)
+                  // 跟上一筆有一大半相同的詞 (淡入的字被辨識成不同寫法) 而且是 6 秒內 → 也當作同一句
+                  if (last != null && !grown && sL.length >= 6 && sO.length >= 6 && SystemClock.uptimeMillis() - last.at < 6000L) {
+                      val bo = (0 until sO.length - 1).map { i -> sO.substring(i, i + 2) }.toSet()
+                      val bl = (0 until sL.length - 1).map { i -> sL.substring(i, i + 2) }.toSet()
+                      if (bo.isNotEmpty() && bl.isNotEmpty() && bo.count { x -> bl.contains(x) } * 100 >= minOf(bo.size, bl.size) * 55 && Math.abs(sO.length - sL.length) <= 4) return
+                  }
                   // 跟上一筆長度差不多、只有幾個字辨識不同 (不是逐字長出來) → 同一句,不另外加一行
                   if (last != null && !grown && sL.length >= 6 && Math.abs(sO.length - sL.length) <= 2 && levDist(sO, sL) <= maxOf(2, sL.length / 3)) return
                   if (last != null && !grown && last.zh != "…" && nO.length <= nL.length + 1 && sameSentence(orig, last.orig)) {
@@ -4842,6 +4869,22 @@ jobs:
                           rememberAi(z1)
                           return@execute
                       }
+                      // 辨識本身很可能讀錯 (錯字、夾雜英文、長度不合):直接請 AI 看圖,比拿錯字去翻準
+                      if (why.contains("辨識") || why.contains("英文") || why.contains("長度")) {
+                          val crop = cropFor(jp)
+                          if (crop != null) {
+                              val v = try {
+                                  visionCall(crop)
+                              } finally {
+                                  crop.recycle()
+                              }
+                              if (v != null && v.second.isNotBlank()) {
+                                  cachePut("smart", jp, v.second)
+                                  ui.post { upgradeShown(jp, z1, v.second, v.first) }
+                                  return@execute
+                              }
+                          }
+                      }
                       val ai = aiCall(jp, true) ?: return@execute
                       cachePut("smart", jp, ai)
                       ui.post { upgradeShown(jp, z1, ai) }
@@ -4849,11 +4892,12 @@ jobs:
               }
 
               // 背景檢查發現 Google 翻得怪、AI 翻好了,就把畫面上的譯文換成 AI 的
-              private fun upgradeShown(jp: String, old: String, ai: String) {
+              private fun upgradeShown(jp: String, old: String, ai: String, newOrig: String? = null) {
                   var changed = false
                   for (h in history) {
                       if (h.zh.contains(old)) {
                           h.zh = h.zh.replace(old, ai)
+                          if (newOrig != null && newOrig.isNotBlank()) h.orig = newOrig
                           changed = true
                       }
                   }
@@ -5063,7 +5107,8 @@ jobs:
                           for (ch in c.blk.text) {
                               if (ch in '\u3040'..'\u30FF') q += 2 else if (ch in '\u4E00'..'\u9FFF') q += 2 else q += 1
                           }
-                          if (c.v == 3) q = q * 130 / 100
+                          // 外框版本比較容易有雜點,要明顯讀得比別的版本多才採用
+                          if (c.v == 3) q = q * 85 / 100
                           score[c.v] = (score[c.v] ?: 0) + q
                       }
                       var bestV = -1
@@ -5080,6 +5125,100 @@ jobs:
                       }
                   }
                   return out
+              }
+
+              // 找字邊的深色外框 (黑字白底):比周圍小方塊平均暗一截的點才算
+              private fun outlineMask(src: Bitmap, scale: Float): Bitmap {
+                  val w = (src.width * scale).toInt()
+                  val h = (src.height * scale).toInt()
+                  val scaled = Bitmap.createScaledBitmap(src, w, h, true)
+                  val px = IntArray(w * h)
+                  scaled.getPixels(px, 0, w, 0, 0, w, h)
+                  if (scaled !== src) scaled.recycle()
+                  val lum = IntArray(w * h)
+                  for (i in px.indices) {
+                      val c = px[i]
+                      lum[i] = (((c shr 16) and 0xFF) * 30 + ((c shr 8) and 0xFF) * 59 + (c and 0xFF) * 11) / 100
+                  }
+                  val iw = w + 1
+                  val ii = IntArray(iw * (h + 1))
+                  for (y in 0 until h) {
+                      var rowSum = 0
+                      for (x in 0 until w) {
+                          rowSum += lum[y * w + x]
+                          ii[(y + 1) * iw + (x + 1)] = ii[y * iw + (x + 1)] + rowSum
+                      }
+                  }
+                  val rad = 6
+                  val black = 0xFF000000.toInt()
+                  val white = 0xFFFFFFFF.toInt()
+                  for (y in 0 until h) {
+                      val y0 = maxOf(0, y - rad)
+                      val y1 = minOf(h, y + rad + 1)
+                      for (x in 0 until w) {
+                          val x0 = maxOf(0, x - rad)
+                          val x1 = minOf(w, x + rad + 1)
+                          val sum = ii[y1 * iw + x1] - ii[y0 * iw + x1] - ii[y1 * iw + x0] + ii[y0 * iw + x0]
+                          val mean = sum / ((y1 - y0) * (x1 - x0))
+                          px[y * w + x] = if (mean - lum[y * w + x] > 16) black else white
+                      }
+                  }
+                  val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  out.setPixels(px, 0, w, 0, 0, w, h)
+                  return out
+              }
+
+              // 最近幾句對白的截圖 (辨識出的文字 -> 圖),背景檢查發現辨識可能讀錯時,拿來請 AI 直接看圖
+              private val cropStore = ArrayList<Pair<String, Bitmap>>()
+
+              private fun rememberCrop(text: String, src: Bitmap) {
+                  try {
+                      val c = src.copy(Bitmap.Config.ARGB_8888, false) ?: return
+                      synchronized(cropStore) {
+                          cropStore.add(0, Pair(text, c))
+                          while (cropStore.size > 4) cropStore.removeAt(cropStore.size - 1).second.recycle()
+                      }
+                  } catch (e: Exception) {
+                      // 記憶體不夠就算了
+                  }
+              }
+
+              private fun cropFor(jp: String): Bitmap? {
+                  val a = jp.filter { c -> c.isLetterOrDigit() }
+                  var best: Bitmap? = null
+                  var bs = Int.MAX_VALUE
+                  synchronized(cropStore) {
+                      for (e in cropStore) {
+                          val b = e.first.filter { c -> c.isLetterOrDigit() }
+                          val d = levDist(a, b)
+                          if (d < bs && d <= maxOf(3, maxOf(a.length, b.length) / 2)) {
+                              bs = d
+                              best = e.second.copy(Bitmap.Config.ARGB_8888, false)
+                          }
+                      }
+                  }
+                  return best
+              }
+
+              // 請 AI 直接看圖讀出日文並翻譯 (只在辨識很可能讀錯時用,同樣受每分鐘次數限制)
+              private fun visionCall(bmp: Bitmap): Pair<String, String>? {
+                  val cfg = AiClient.config(applicationContext)
+                  if (cfg == null || cfg.key.isEmpty()) return null
+                  if (AiQuota.tryAcquire(applicationContext) != null) return null
+                  return try {
+                      val r = AiClient.translateImage(applicationContext, bmp, aiHistory.toList()) ?: return null
+                      val fixed = Glossary.fix(applicationContext, r.second)
+                      rememberAi(fixed)
+                      Pair(r.first, fixed)
+                  } catch (e: Exception) {
+                      val msg = e.message ?: e.toString()
+                      if (msg.contains("429")) {
+                          AiQuota.onServer429(applicationContext, msg)
+                      } else if (msg.contains("503") || msg.contains("UNAVAILABLE", true) || msg.contains("overloaded", true)) {
+                          AiQuota.onServerBusy()
+                      }
+                      null
+                  }
               }
 
               // 只留下金色的字 (黑字白底),對付疊在雜亂背景上的半透明金色字幕
@@ -5790,10 +5929,8 @@ jobs:
                           if (hits.size >= 2) break
                       }
                   }
-                  if (chap == null) {
-                      hideGuideHint()
-                      return
-                  }
+                  // 這一句沒有新的章節資訊:已經顯示的提示不要收掉 (以前每句對話都會把它關掉,所以只閃一下)
+                  if (chap == null) return
                   hideGuideHint()
                   val box = LinearLayout(this)
                   box.orientation = LinearLayout.VERTICAL
@@ -5839,7 +5976,7 @@ jobs:
                   try {
                       wm.addView(tv, lp)
                       guideChip = tv
-                      ui.postDelayed(hideChipRun, 12000)
+                      ui.postDelayed(hideChipRun, 40000)
                   } catch (e: Exception) {
                       // ignore
                   }
