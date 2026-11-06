@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 12
-                  versionName = "3.39"
+                  versionCode = 15
+                  versionName = "3.42"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.39 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.42 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3950,7 +3950,7 @@ jobs:
                       // 字色跟背景太像 (土黃字疊在土黃石板地) 時,只靠字邊那圈深色外框: 比周圍暗的點留下當黑字
                       variants.add(Pair(outlineMask(src, 2f), 2f))
                       // 背景相減:用最近幾句對白同一位置的「中間值」當乾淨背景,跟這張相減,只剩字
-                      val bm = bgMask(src, 2f)
+                      val bm = bgMask(src, 2f, topOffset)
                       if (bm != null) variants.add(Pair(bm, 2f))
                   }
 
@@ -4437,7 +4437,7 @@ jobs:
                               // latestCrop 就是 old
                           }
                           latestCrop = null
-                          bgAdd(old)
+                          bgAdd(old, latestTop)
                           autoQueue.addLast(Pair(old, latestTop))
                           while (autoQueue.size > 8) {
                       autoQueue.removeFirst().first.recycle()
@@ -5138,6 +5138,9 @@ jobs:
                               bestV = k
                           }
                       }
+                      // 背景相減版本的字最乾淨:只要讀到的量有最好版本的 6 成,就用它 (別的版本字數多常常是背景雜訊讀出來的亂字)
+                      val sBg = score[4] ?: 0
+                      if (sBg > 0 && sBg * 10 >= bestS * 6) bestV = 4
                       for (c in row.filter { x -> x.v == bestV }.sortedBy { x -> x.blk.rect.left }) {
                           out.add(c.blk)
                       }
@@ -5151,6 +5154,7 @@ jobs:
               private var bgW = 0
               private var bgH = 0
               private var bgMed: IntArray? = null
+              private var bgLastAt = 0L
               private val bgLock = Any()
 
               private fun colDiff(a: Int, b: Int): Int =
@@ -5159,12 +5163,23 @@ jobs:
                       Math.abs((a and 0xFF) - (b and 0xFF))
 
               // 每換一頁對白,把上一頁定格的那張存起來;不同句的字位置不同,取每個點的中間值就是沒有字的背景
-              private fun bgAdd(b: Bitmap) {
+              // 魔法選單模式時截圖會往上延伸到整個畫面 (有人物頭像,每句都不一樣),背景只用對白那一段 (下半)
+              private fun bgY0(srcH: Int, topOffset: Int): Int {
+                  return try {
+                      val base = regionRows(readMetrics()[1])[0]
+                      maxOf(0, minOf(srcH - 40, base - topOffset))
+                  } catch (e: Throwable) {
+                      0
+                  }
+              }
+
+              private fun bgAdd(b: Bitmap, topOffset: Int) {
                   try {
                       val w = b.width
-                      val h = b.height
+                      val y0 = bgY0(b.height, topOffset)
+                      val h = b.height - y0
                       val px = IntArray(w * h)
-                      b.getPixels(px, 0, w, 0, 0, w, h)
+                      b.getPixels(px, 0, w, 0, y0, w, h)
                       bgHandler.post { bgAddPx(px, w, h) }
                   } catch (e: Throwable) {
                       // 忽略
@@ -5174,6 +5189,13 @@ jobs:
               private fun bgAddPx(px: IntArray, w: Int, h: Int) {
                   try {
                       synchronized(bgLock) {
+                          val nowB = SystemClock.uptimeMillis()
+                          // 隔太久 (中間去打過戰鬥、開過選單) 的舊背景不能用
+                          if (bgLastAt > 0 && nowB - bgLastAt > 90000L) {
+                              bgSamples.clear()
+                              bgMed = null
+                          }
+                          bgLastAt = nowB
                           if (w != bgW || h != bgH) {
                               bgSamples.clear()
                               bgMed = null
@@ -5191,7 +5213,7 @@ jobs:
                                   i += 7
                               }
                               // 一大半的點都不一樣 = 換了場景,重新累積
-                              if (d * 100 > n * 40) {
+                              if (d * 100 > n * 25) {
                                   bgSamples.clear()
                                   bgMed = null
                               }
@@ -5231,27 +5253,28 @@ jobs:
                   }
               }
 
-              private fun bgMask(src: Bitmap, scale: Float): Bitmap? {
+              private fun bgMask(src: Bitmap, scale: Float, topOffset: Int): Bitmap? {
                   try {
-                      val med = synchronized(bgLock) { if (src.width == bgW && src.height == bgH) bgMed else null } ?: return null
+                      val y0 = bgY0(src.height, topOffset)
+                      val med = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L) bgMed else null } ?: return null
                       val w = src.width
                       val h = src.height
-                      val px = IntArray(w * h)
-                      src.getPixels(px, 0, w, 0, 0, w, h)
+                      val bh = h - y0
+                      val px = IntArray(w * bh)
+                      src.getPixels(px, 0, w, 0, y0, w, bh)
                       val black = 0xFF000000.toInt()
                       val white = 0xFFFFFFFF.toInt()
                       var cnt = 0
                       val out = IntArray(w * h)
+                      java.util.Arrays.fill(out, white)
                       for (i in px.indices) {
                           if (colDiff(px[i], med[i]) > 70) {
-                              out[i] = black
+                              out[y0 * w + i] = black
                               cnt++
-                          } else {
-                              out[i] = white
                           }
                       }
                       // 幾乎沒有字,或一大半都不一樣 (場景換了):這個版本不用
-                      if (cnt * 1000 < px.size * 3 || cnt * 100 > px.size * 45) return null
+                      if (cnt * 1000 < px.size * 3 || cnt * 100 > px.size * 20) return null
                       val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                       bm.setPixels(out, 0, w, 0, 0, w, h)
                       val sw = (w * scale).toInt()
@@ -5998,6 +6021,7 @@ jobs:
                       }
                       hideGuideHint()
                       history.clear()
+                      bgClear()
                       lastWasSpell = true
                       lastSpellOk = SystemClock.uptimeMillis()
                       ui.removeCallbacks(emptyHide)
