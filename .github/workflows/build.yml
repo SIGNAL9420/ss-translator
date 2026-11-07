@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 16
-                  versionName = "3.43"
+                  versionCode = 17
+                  versionName = "3.44"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.43 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.44 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -4427,6 +4427,8 @@ jobs:
                           statGapN++
                       }
                       statLastChangeAt = nowT
+                      val newRef = grabBand(crop, top)
+                      pageRef = newRef
                       val oldS = settleCrop
                       val old = oldS ?: latestCrop
                       if (old != null) {
@@ -4438,6 +4440,7 @@ jobs:
                           }
                           latestCrop = null
                           bgAdd(old, latestTop)
+                          refPut(old, newRef)
                           autoQueue.addLast(Pair(old, latestTop))
                           while (autoQueue.size > 8) {
                       autoQueue.removeFirst().first.recycle()
@@ -4464,6 +4467,7 @@ jobs:
                       } else {
                           slotAt = nowQ
                       }
+                      if (!bigChange) refPut(crop, pageRef)
                       autoQueue.addLast(Pair(crop, top))
                       while (autoQueue.size > 8) {
                           autoQueue.removeFirst().first.recycle()
@@ -5246,6 +5250,29 @@ jobs:
                   }
               }
 
+              // 每一頁剛開始 (舊字剛消失、新字還沒打出來) 的第一張,當作「沒有字的背景」給這一頁用;
+              // 前一頁最後那張也拿它來相減。這樣不用等累積好幾頁,第一頁就能用
+              private var pageRef: IntArray? = null
+              private val refFor = java.util.WeakHashMap<Bitmap, IntArray>()
+
+              private fun grabBand(b: Bitmap, topOffset: Int): IntArray? {
+                  return try {
+                      val y0 = bgY0(b.height, topOffset)
+                      val px = IntArray(b.width * (b.height - y0))
+                      b.getPixels(px, 0, b.width, 0, y0, b.width, b.height - y0)
+                      px
+                  } catch (e: Throwable) {
+                      null
+                  }
+              }
+
+              private fun refPut(b: Bitmap, ref: IntArray?) {
+                  if (ref == null) return
+                  synchronized(refFor) { refFor[b] = ref }
+              }
+
+              private fun refTake(b: Bitmap): IntArray? = synchronized(refFor) { refFor.remove(b) }
+
               private fun bgClear() {
                   synchronized(bgLock) {
                       bgSamples.clear()
@@ -5328,10 +5355,13 @@ jobs:
               private fun bgMask(src: Bitmap, scale: Float, topOffset: Int): Bitmap? {
                   try {
                       val y0 = bgY0(src.height, topOffset)
-                      val med = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L) bgMed else null } ?: return null
+                      val pr = refTake(src)
+                      val med0 = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L) bgMed else null }
+                      val med = med0 ?: pr ?: return null
                       val w = src.width
                       val h = src.height
                       val bh = h - y0
+                      if (med.size != w * bh) return null
                       val px = IntArray(w * bh)
                       src.getPixels(px, 0, w, 0, y0, w, bh)
                       val black = 0xFF000000.toInt()
