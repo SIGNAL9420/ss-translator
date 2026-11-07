@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 17
-                  versionName = "3.44"
+                  versionCode = 18
+                  versionName = "3.45"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.44 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.45 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3371,6 +3371,58 @@ jobs:
 
               // ---- 自動翻譯用
               private var lastAutoTs = 0L
+
+              // ---- 找「沒有字」的那一張 ----
+              // 換頁時舊字消失、新字還沒打出來的那一瞬間,字幕區就是乾淨的背景。
+              // 每 40 毫秒粗略量一次字幕區的線條多寡 (有字線條多),近 1.5 秒內最少的那一張存起來。
+              private var lastCleanTs = 0L
+              private var cleanE = Long.MAX_VALUE
+              private var cleanAt = 0L
+              @Volatile
+              private var cleanPx: IntArray? = null
+              @Volatile
+              private var cleanW = 0
+              private var cleanBandTop = 0
+
+              private fun trackClean(img: android.media.Image, now: Long) {
+                  if (now - lastCleanTs < 40) return
+                  lastCleanTs = now
+                  val h = img.height
+                  val rows = captureRows(h)
+                  val bandTop = regionRows(h)[0]
+                  val bandBot = rows[1]
+                  if (bandBot - bandTop < 40) return
+                  val plane = img.planes[0]
+                  val ps = plane.pixelStride
+                  val rs = plane.rowStride
+                  val buf = plane.buffer
+                  var e = 0L
+                  var y = bandTop
+                  val w = img.width
+                  while (y < bandBot) {
+                      val rowOff = y * rs
+                      var x = 0
+                      var prev = buf.get(rowOff + 1).toInt() and 0xFF
+                      while (x + 3 < w) {
+                          val cur = buf.get(rowOff + (x + 3) * ps + 1).toInt() and 0xFF
+                          e += Math.abs(cur - prev)
+                          prev = cur
+                          x += 3
+                      }
+                      y += 3
+                  }
+                  if (now - cleanAt > 1500L || e <= cleanE) {
+                      cleanE = e
+                      cleanAt = now
+                      val bmp = cropRegion(img, intArrayOf(bandTop, bandBot))
+                      val px = IntArray(bmp.width * bmp.height)
+                      bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                      cleanW = bmp.width
+                      cleanBandTop = bandTop
+                      bmp.recycle()
+                      cleanPx = px
+                  }
+              }
               private var curSig: IntArray? = null
               private var lastAcceptAt = 0L
               private var slotAt = 0L
@@ -3667,6 +3719,13 @@ jobs:
                                   ui.post { onFrame(bmp) }
                               } else {
                                   val nowTs = SystemClock.uptimeMillis()
+                                  if (autoOn() && !paused) {
+                                      try {
+                                          trackClean(img, nowTs)
+                                      } catch (e3: Throwable) {
+                                          // 忽略
+                                      }
+                                  }
                                   if (nowTs - lastAutoTs >= 250 && autoOn()) {
                                       lastAutoTs = nowTs
                                       try {
@@ -4427,7 +4486,11 @@ jobs:
                           statGapN++
                       }
                       statLastChangeAt = nowT
-                      val newRef = grabBand(crop, top)
+                      // 優先用「換頁瞬間最乾淨的那一張」,沒有才用新頁的第一張
+                      val cl = cleanPx
+                      val cleanOk = cl != null && cleanW == crop.width && SystemClock.uptimeMillis() - cleanAt <= 1500L &&
+                          cl.size == crop.width * (crop.height - bgY0(crop.height, top))
+                      val newRef = if (cleanOk) cl else grabBand(crop, top)
                       pageRef = newRef
                       val oldS = settleCrop
                       val old = oldS ?: latestCrop
@@ -4439,7 +4502,13 @@ jobs:
                               // latestCrop 就是 old
                           }
                           latestCrop = null
-                          bgAdd(old, latestTop)
+                          val cw = crop.width
+                          if (cleanOk && newRef != null) {
+                              val nr: IntArray = newRef
+                              bgHandler.post { bgAddPx(nr, cw, nr.size / cw) }
+                          } else {
+                              bgAdd(old, latestTop)
+                          }
                           refPut(old, newRef)
                           autoQueue.addLast(Pair(old, latestTop))
                           while (autoQueue.size > 8) {
