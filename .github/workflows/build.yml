@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 18
-                  versionName = "3.45"
+                  versionCode = 19
+                  versionName = "3.46"
               }
 
               buildTypes {
@@ -1680,7 +1680,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.45 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.46 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -4249,6 +4249,15 @@ jobs:
               private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0, var page: Int = 0)
               @Volatile
               private var pageSerial = 0
+              // 每一張排隊辨識的畫面,記住它是「第幾頁」對白。辨識完成時 (可能已經晚了好幾頁) 用它來判斷,不能用「當下」的頁碼
+              private val serialFor = java.util.WeakHashMap<Bitmap, Int>()
+              @Volatile
+              private var resultSerial = 0
+              private var lastSeenSig: IntArray? = null
+
+              private fun markSerial(b: Bitmap, serial: Int) {
+                  synchronized(serialFor) { serialFor[b] = serial }
+              }
 
               private val history = ArrayList<Hist>()
               private var hideQueued = false
@@ -4285,15 +4294,22 @@ jobs:
                           if ((sO.length >= 8 && se.contains(sO)) || sameSentence(orig, e.orig) || levDist(sO, se) <= maxOf(2, minOf(sO.length, se.length) / 3)) return
                       }
                   }
-                  // 同一個畫面頁 (沒有按下一句) 內又辨識到不同寫法:換掉上一筆,不要多加一行
-                  if (last != null && last.page == pageSerial && sL.length >= 3 && sO.length >= 3 && SystemClock.uptimeMillis() - last.at < 15000L) {
-                      if (sO.length >= sL.length - 2) {
-                          last.orig = orig
-                          last.zh = zh
-                          last.at = SystemClock.uptimeMillis()
-                          last.tries = 0
+                  // 同一個畫面頁 (沒有按下一句) 內又辨識到不同寫法:換掉上一筆,不要多加一行。
+                  // 但一定要「有一部分字相同」才算同一句;完全不同的字 (像上一句長、下一句很短) 是另一句話,不能丟掉
+                  if (last != null && last.page == resultSerial && sL.length >= 3 && sO.length >= 3 && SystemClock.uptimeMillis() - last.at < 15000L) {
+                      val bo = (0 until maxOf(0, sO.length - 1)).map { i -> sO.substring(i, i + 2) }.toSet()
+                      val bl = (0 until maxOf(0, sL.length - 1)).map { i -> sL.substring(i, i + 2) }.toSet()
+                      val mn = minOf(bo.size, bl.size)
+                      val contain = if (mn > 0) bo.count { x -> bl.contains(x) }.toFloat() / mn else 0f
+                      if (contain >= 0.3f) {
+                          if (sO.length >= sL.length - 2) {
+                              last.orig = orig
+                              last.zh = zh
+                              last.at = SystemClock.uptimeMillis()
+                              last.tries = 0
+                          }
+                          return
                       }
-                      return
                   }
                   val grown = last != null && sL.isNotEmpty() && sL.length < sO.length &&
                       (levDist(sL, sO.take(sL.length)) <= tol || partOf)
@@ -4317,7 +4333,7 @@ jobs:
                   } else {
                       // 上一句已經講完 (下一句接上來了),不用再等,馬上翻
                       if (last != null && last.zh == "…") scheduleTranslate(last.orig, true, 0L)
-                      history.add(Hist(orig, zh, SystemClock.uptimeMillis(), 0, pageSerial))
+                      history.add(Hist(orig, zh, SystemClock.uptimeMillis(), 0, resultSerial))
                       while (history.size > 10) history.removeAt(0)
                   }
               }
@@ -4461,12 +4477,18 @@ jobs:
                   }
                   val sig = signature(crop)
                   val prev = curSig
+                  val seenBefore = lastSeenSig
+                  lastSeenSig = sig
+                  val dSeen = if (seenBefore != null && seenBefore.size == sig.size) sigDiff(seenBefore, sig) else Int.MAX_VALUE
                   if (prev != null && prev.size == sig.size && sigDiff(prev, sig).let { d -> d == 0 || (d <= 6 && System.currentTimeMillis() - lastAcceptAt < 1500L) }) {
-                      // 畫面幾乎沒變:留住最新一張,停止變動 0.7 秒後再完整辨識一次,確保逐字出現的最後一個字不會漏掉
+                      // 畫面幾乎沒變 (逐字淡入的小變化):一直留住「最新」的一張,每次又有變化就重新計時,
+                      // 停住 0.35 秒後完整辨識這一張。你很快按下一句時,最新的這一張也會在換頁那一刻被補進辨識佇列,不會漏掉句尾
+                      if (dSeen != 0) settleDone = false
                       if (!settleDone) {
                           settleCrop?.recycle()
                           settleCrop = crop
-                          if (!settlePosted) {
+                          if (dSeen != 0 || !settlePosted) {
+                              ui.removeCallbacks(settleRun)
                               settlePosted = true
                               ui.postDelayed(settleRun, 350)
                           }
@@ -4510,6 +4532,7 @@ jobs:
                               bgAdd(old, latestTop)
                           }
                           refPut(old, newRef)
+                          markSerial(old, pageSerial)
                           autoQueue.addLast(Pair(old, latestTop))
                           while (autoQueue.size > 8) {
                       autoQueue.removeFirst().first.recycle()
@@ -4537,6 +4560,7 @@ jobs:
                           slotAt = nowQ
                       }
                       if (!bigChange) refPut(crop, pageRef)
+                      markSerial(crop, pageSerial)
                       autoQueue.addLast(Pair(crop, top))
                       while (autoQueue.size > 8) {
                           autoQueue.removeFirst().first.recycle()
@@ -4689,6 +4713,7 @@ jobs:
                   latestCrop = null
                   // 魔法選單 / HELP 開著的時候只看最新的畫面,舊的不用排隊 (排隊會讓說明晚很久才出來)
                   if (lastWasSpell || helpBoxRect != null) clearAutoQueue()
+                  markSerial(c0, pageSerial)
                   autoQueue.addLast(Pair(c0, latestTop))
                   while (autoQueue.size > 8) {
                       autoQueue.removeFirst().first.recycle()
@@ -4704,6 +4729,7 @@ jobs:
                   }
                   val item = autoQueue.pollFirst() ?: return
                   val c = item.first
+                  val serial = synchronized(serialFor) { serialFor.remove(c) } ?: pageSerial
                   autoBusy = true
                   val top = item.second
                   setLabel("…")
@@ -4752,6 +4778,7 @@ jobs:
                                   doneJp = jpNow
                                   shownJp = jpNow
                                   shownItems = shownList
+                                  resultSerial = serial
                                   showResult(shownList)
                                   for (x in list) {
                                       if (x.text.isEmpty()) scheduleTranslate(x.orig)
@@ -4822,6 +4849,11 @@ jobs:
                   if (Regex("[ぁ-ん][ァ-ヶ][ぁ-ん]").containsMatchIn(jp) || Regex("[ぁ-ん][玉王土士][ぁ-んァ-ヶ]").containsMatchIn(jp)) {
                       hard = true
                       why.append("辨識可能有錯字 ")
+                  }
+                  // 句子開頭是不可能開頭的字 (長音、小假名、句號、を…) = 開頭幾個字沒讀到,直接請 AI 看圖補
+                  if (Regex("^[ーっッゃゅょャュョぁぃぅぇぉァィゥェォ、。を]").containsMatchIn(jp)) {
+                      hard = true
+                      why.append("辨識可能缺開頭 ")
                   }
                   if (hard) return why.toString().trim()
 
