@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 23
-                  versionName = "3.50"
+                  versionCode = 24
+                  versionName = "3.51"
               }
 
               buildTypes {
@@ -1681,9 +1681,33 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.50 (含 AI + 攻略,診斷版)"
+                  title.text = "SS 日文即時翻譯 v3.51 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
+
+                  // 使用前必看:模擬器設定。對話字後面要有半透明深色底,日文才不會被金色樓梯、地板吃掉開頭的字
+                  val must = TextView(this)
+                  must.text = "⚠ 使用前必看:模擬器設定\n" +
+                      "本程式以「Yaba Sanshiro 2」(Google Play 免費版,1.20.x) 測試,遊戲為 SS「スレイヤーズろいやる」1、2 代。\n" +
+                      "1. 手機直立擺放:遊戲畫面在上半部,下半部是 Yaba 的虛擬按鍵 (Player1 輸入裝置選 On-Screen Pad)。\n" +
+                      "2. 一定要改「VDP2 Compositing」,步驟:\n" +
+                      "   (1) 在 Yaba Sanshiro 2 開始玩遊戲 (遊戲畫面出來之後)。\n" +
+                      "   (2) 按手機的「返回」鍵 (或從螢幕邊緣往內滑的返回手勢),左邊會跳出遊戲選單。\n" +
+                      "   (3) 點選單裡的「Settings」(齒輪圖示,在 Action Replay Code 下面那個)。\n" +
+                      "   (4) 進到「Game Setting」頁面,點「VDP2 Compositing」。\n" +
+                      "   (5) 跳出「Choose VDP2 compositing method」,選「Fast (legacy)」。\n" +
+                      "   (6) 確認「VDP2 Compositing」下面顯示 Fast (legacy),按「返回」回到遊戲。\n" +
+                      "   (7) 檢查:對話字後面出現一條半透明深色底就成功了。如果沒出現,把遊戲結束 (選單 → Exit) 再重新開一次。\n" +
+                      "   沒有這條深色底,金色字疊在金色樓梯上,對話開頭的字常常讀不到。\n" +
+                      "3. 其他建議:Video Core = Vulkan、Rendering Resolution = Native、Filter = None、Aspect Ratio = Original。\n" +
+                      "4. 先開好翻譯 (按 ③) 再進入對話,第一頁最準。"
+                  must.setTextColor(0xFFB00020.toInt())
+                  must.textSize = 15f
+                  must.setPadding(dp(10), dp(10), dp(10), dp(10))
+                  must.setBackgroundColor(0xFFFFF3E0.toInt())
+                  val mustLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                  mustLp.topMargin = dp(8)
+                  root.addView(must, mustLp)
 
                   val intro = TextView(this)
                   intro.text = "玩日文或英文遊戲時,自動把畫面對白翻成台灣繁體中文。\n" +
@@ -1752,6 +1776,13 @@ jobs:
                   })
                   root.addView(makeButton("③ 啟動翻譯懸浮按鈕") { startCapture() })
                   root.addView(makeButton("停止翻譯服務") { stopService() })
+
+                  // 診斷紀錄 (開發用,預設關閉):打開後會把每一頁的截圖和辨識結果存到「下載/SSDiag」,傳給開發者分析
+                  val diag = android.widget.CheckBox(this)
+                  diag.text = "儲存診斷紀錄 (開發用,會在「下載/SSDiag」產生很多圖片檔,平常不用開)"
+                  diag.isChecked = cfg.getBoolean("diag", false)
+                  diag.setOnCheckedChangeListener { _, on -> cfg.edit().putBoolean("diag", on).apply() }
+                  root.addView(diag)
 
                   status = TextView(this)
                   status.text = "請依序按 ① → ② → ③,然後切換到模擬器遊戲。"
@@ -5372,18 +5403,25 @@ jobs:
                       for (c in row) {
                           var q = 0
                           for (ch in c.blk.text) {
-                              if (ch in '\u3040'..'\u30FF') q += 2 else if (ch in '\u4E00'..'\u9FFF') q += 2 else q += 1
+                              // \u9EDE\u9EDE (\u2026\u2025\u30FB\u00B7. \u9019\u985E) \u4E0D\u7B97\u5206:\u539F\u5716\u7248\u672C\u5E38\u628A\u300C\u2026\u2026\u300D\u8B80\u6210\u4E00\u4E32\u96DC\u9EDE,
+                              // \u4EE5\u524D\u96DC\u9EDE\u7684\u5206\u6578\u525B\u597D\u88DC\u4E0A\u5C11\u8B80\u7684\u300C\u3053\u300D,\u8DDF\u8B80\u5C0D\u7684\u7248\u672C\u5E73\u624B,\u7D50\u679C\u9078\u5230\u5C11\u4E00\u500B\u5B57\u7684 (\u624B\u6A5F\u8A3A\u65B7\u7D00\u9304\u78BA\u8A8D)
+                              if (ch in '\u3040'..'\u30FF' && ch != '\u30FB') q += 2 else if (ch in '\u4E00'..'\u9FFF') q += 2 else if (ch in "\u2026\u2025\u30FB\u00B7.\uFF0E\u2022\u3002") q += 0 else q += 1
                           }
                           // 外框版本比較容易有雜點,要明顯讀得比別的版本多才採用
                           if (c.v == 3) q = q * 85 / 100
                           if (c.v == 4) q = q * 115 / 100
                           score[c.v] = (score[c.v] ?: 0) + q
                       }
+                      // 每個版本這一列最左邊從哪裡開始讀 (同分時選從比較左邊開始的,開頭比較不會少字)
+                      val startOf = HashMap<Int, Int>()
+                      for (c in row) {
+                          if (c.blk.rect.left < (startOf[c.v] ?: Int.MAX_VALUE)) startOf[c.v] = c.blk.rect.left
+                      }
                       var bestV = -1
                       var bestS = -1
                       for (k in score.keys.sorted()) {
                           val sc = score[k] ?: 0
-                          if (sc > bestS) {
+                          if (sc > bestS || (sc == bestS && bestV >= 0 && (startOf[k] ?: Int.MAX_VALUE) < (startOf[bestV] ?: Int.MAX_VALUE))) {
                               bestS = sc
                               bestV = k
                           }
@@ -5518,7 +5556,7 @@ jobs:
               private val diagSession: String = java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
 
               private fun diagOn(): Boolean =
-                  diagFiles < 300 && getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("diag", true)
+                  diagFiles < 300 && getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("diag", false)
 
               private fun diagNote(s: String) {
                   if (!diagOn()) return
@@ -7404,4 +7442,11 @@ jobs:
           gh release create "v${{ github.run_number }}" SS-Translator.apk \
             --repo "${{ github.repository }}" \
             --title "SS日文翻譯 v${{ github.run_number }}" \
-            --notes "下載 SS-Translator.apk 安裝即可。"
+            --notes "下載 SS-Translator.apk 安裝即可 (更新時如果顯示簽章不符,請先移除舊版再安裝,AI 金鑰要重新貼上)。
+
+          ⚠ 使用前必看:模擬器設定
+          - 模擬器:Yaba Sanshiro 2 (Google Play 免費版,1.20.x)。遊戲:SS「スレイヤーズろいやる」1、2 代。
+          - 手機直立:遊戲畫面在上半部,下半部是虛擬按鍵 (Player1 輸入裝置選 On-Screen Pad)。
+          - 一定要改 VDP2 Compositing = Fast (legacy):開始玩遊戲 → 按手機「返回」叫出左邊遊戲選單 → Settings (齒輪) → Game Setting 頁面點 VDP2 Compositing → 選 Fast (legacy) → 按返回回到遊戲。對話字後面出現半透明深色底就成功 (沒出現就選單 → Exit 結束遊戲再重開)。沒有深色底,日文開頭的字會被金色樓梯吃掉。
+          - 建議:Video Core = Vulkan、Rendering Resolution = Native、Filter = None、Aspect Ratio = Original。
+          - 先按 ③ 開好翻譯再進入對話,第一頁最準。"
