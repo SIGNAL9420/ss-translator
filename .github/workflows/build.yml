@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 19
-                  versionName = "3.46"
+                  versionCode = 21
+                  versionName = "3.48"
               }
 
               buildTypes {
@@ -1038,7 +1038,7 @@ jobs:
               }
 
               // 看圖翻譯:直接把對白框的截圖交給 AI。回傳 (日文原文, 中文譯文),畫面沒有日文時回傳 null
-              fun translateImage(ctx: Context, bmp: Bitmap, history: List<String>): Pair<String, String>? {
+              fun translateImage(ctx: Context, bmp: Bitmap, history: List<String>, hint: String? = null): Pair<String, String>? {
                   val cfg = config(ctx) ?: throw IllegalStateException("還沒設定 AI,請到主畫面的「AI 設定」填入")
                   val src = if (bmp.width > 1280) {
                       Bitmap.createScaledBitmap(bmp, 1280, (bmp.height * 1280L / bmp.width).toInt(), true)
@@ -1052,6 +1052,7 @@ jobs:
 
                   val ask = historyText(history) +
                       "這是遊戲對白框的截圖 (可能是半透明的小字,背景雜亂)。請讀出畫面中的日文或英文對白,並翻成臺灣繁體中文。\n" +
+                      (if (hint != null && hint.isNotBlank()) "文字辨識讀到的是「" + hint + "」,但最左邊開頭的幾個字很淡、可能沒讀到或讀錯,請以圖片為準,把整句從最左邊的第一個字開始完整讀出來。\n" else "") +
                       "請嚴格用下面兩行格式輸出,不要多說別的:\n原文:<原文>\n譯文:<繁體中文>\n" +
                       "如果畫面裡沒有日文或英文對白,只輸出一個字:無"
                   val content = JSONArray()
@@ -1680,7 +1681,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.46 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.48 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -3377,6 +3378,7 @@ jobs:
               // 每 40 毫秒粗略量一次字幕區的線條多寡 (有字線條多),近 1.5 秒內最少的那一張存起來。
               private var lastCleanTs = 0L
               private var cleanE = Long.MAX_VALUE
+              private var cleanMean = 0L
               private var cleanAt = 0L
               @Volatile
               private var cleanPx: IntArray? = null
@@ -3396,7 +3398,9 @@ jobs:
                   val ps = plane.pixelStride
                   val rs = plane.rowStride
                   val buf = plane.buffer
-                  var e = 0L
+                  var e0 = 0L
+                  var lum = 0L
+                  var cnt = 0L
                   var y = bandTop
                   val w = img.width
                   while (y < bandBot) {
@@ -3405,14 +3409,24 @@ jobs:
                       var prev = buf.get(rowOff + 1).toInt() and 0xFF
                       while (x + 3 < w) {
                           val cur = buf.get(rowOff + (x + 3) * ps + 1).toInt() and 0xFF
-                          e += Math.abs(cur - prev)
+                          e0 += Math.abs(cur - prev)
+                          lum += cur.toLong()
+                          cnt++
                           prev = cur
                           x += 3
                       }
                       y += 3
                   }
-                  if (now - cleanAt > 1500L || e <= cleanE) {
+                  if (cnt == 0L) return
+                  val mean = lum / cnt
+                  // 全黑 (換場景的黑畫面) 不算
+                  if (mean < 12) return
+                  // 線條量除以亮度:淡入中的半暗畫面線條少,但不是因為沒有字,不能比亮的乾淨畫面優先
+                  val e = e0 * 64 / maxOf(8L, mean)
+                  val brighterSame = cleanE < Long.MAX_VALUE / 4096 && mean > cleanMean + 2 && e * 1000 <= cleanE * 1015
+                  if (now - cleanAt > 1500L || e <= cleanE || brighterSame) {
                       cleanE = e
+                      cleanMean = mean
                       cleanAt = now
                       val bmp = cropRegion(img, intArrayOf(bandTop, bandBot))
                       val px = IntArray(bmp.width * bmp.height)
@@ -3424,6 +3438,8 @@ jobs:
                   }
               }
               private var curSig: IntArray? = null
+              // 這一頁對白剛開始時的樣子 (用來判斷「原本有字的地方字不見了」= 換頁)
+              private var pageBaseSig: IntArray? = null
               private var lastAcceptAt = 0L
               private var slotAt = 0L
               // 診斷統計:對話畫面換句的間隔 (約等於你按下一句的間隔)、漏掉的畫面數、一句翻完的時間
@@ -3446,13 +3462,21 @@ jobs:
                   if (c != null && autoOn() && !paused) {
                       latestCrop?.recycle()
                       latestCrop = c
+                      // 這一頁剛開始、還沒有字的那張乾淨背景,拿來跟這張相減。以前這條路沒帶背景,
+                      // 所以每個場景最前面兩三頁 (還沒累積出背景) 左邊靠樓梯的字最容易讀漏
+                      if (!lastWasSpell && helpBoxRect == null) {
+                          refPut(c, pageRef)
+                          // 這一頁講完的樣子先記下來:換頁時用來累積背景、檢查「乾淨背景」是不是其實還有上一頁的字
+                          lastFinalBand = grabBand(c, latestTop)
+                      }
                       ui.removeCallbacks(stableRun)
-                      runAuto()
+                      runAuto(true)
                   } else {
                       c?.recycle()
                   }
               }
               private var latestCrop: Bitmap? = null
+              private var lastFinalBand: IntArray? = null
               private var latestTop = 0
               private var autoBusy = false
               private var doneJp = ""
@@ -4010,7 +4034,10 @@ jobs:
                       variants.add(Pair(outlineMask(src, 2f), 2f))
                       // 背景相減:用最近幾句對白同一位置的「中間值」當乾淨背景,跟這張相減,只剩字
                       val bm = bgMask(src, 2f, topOffset)
-                      if (bm != null) variants.add(Pair(bm, 2f))
+                      // 亮色場景 (石階、石板路) 上字只剩深褐色外框看得清楚:用顏色挑出外框 (編號固定是 5,沒有背景相減時也一樣)
+                      val ink = inkMask(src, 2f)
+                      if (bm != null) variants.add(Pair(bm, 2f)) else variants.add(Pair(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), 1f))
+                      variants.add(Pair(ink, 2f))
                   }
 
                   val raw = StringBuilder()
@@ -4024,7 +4051,8 @@ jobs:
                       val jobs = ArrayList<com.google.android.gms.tasks.Task<com.google.mlkit.vision.text.Text>?>()
                       for (vi in variants.indices) {
                           jobs.add(
-                              try {
+                              // 1x1 的是佔位用的空版本 (沒有背景相減時),不用辨識
+                              if (variants[vi].first.width < 8) null else try {
                                   rec.process(InputImage.fromBitmap(variants[vi].first, 0))
                               } catch (e: Exception) {
                                   null
@@ -4079,7 +4107,7 @@ jobs:
                   }
                   lastRaw = raw.toString()
                   lastOcrMs = SystemClock.uptimeMillis() - tStart
-                  var blocks = pickBestRows(cands)
+                  var blocks = pickBestRows(cands, if (auto && !menuFrame) dialogLeft(src.width) else null)
                   // 戰鬥畫面下方的角色數值欄 (リナ 135/135 ...):整欄都是名字和數字,不是對話,不要翻
                   if (!menuFrame) {
                       val nSlash = Regex("[0-9]{2,3}\\s*[/／]").findAll(lastRaw).count()
@@ -4209,6 +4237,46 @@ jobs:
                           .containsMatchIn(lastRaw.replace(" ", "").replace("　", "")))) return emptyList()
                   if (engine == "aiv" && !auto) return runAiv()
 
+                  // 對話都是靠左對齊、從同一個位置開始。這一行的開頭離平常的左邊界還差一個字以上
+                  // = 開頭的字沒讀到 (淡色字疊在樓梯上最常這樣):先自己把左邊那一小段放大再讀一次,
+                  // 智慧模式再請 AI 直接看圖確認整句 (只有這種句子才送,不會多用很多次)
+                  var leftMiss = false
+                  if (auto && !menuFrame && blocks.isNotEmpty()) {
+                      val mg = dialogLeft(src.width)
+                      val rowsL = ArrayList<Blk>()
+                      for (b in blocks.sortedBy { x -> x.rect.centerY() }) {
+                          val r = rowsL.lastOrNull { q -> Math.abs(q.rect.centerY() - b.rect.centerY()) <= maxOf(q.lineH, b.lineH) / 2 }
+                          if (r == null) {
+                              rowsL.add(Blk(Rect(b.rect), b.text, b.lineH))
+                          } else {
+                              r.rect.union(b.rect)
+                              r.text = r.text + b.text
+                          }
+                      }
+                      if (mg != null) {
+                          for (r in rowsL) {
+                              if (r.rect.left - mg < r.lineH * 9 / 10) continue
+                              // 左邊那一段要真的有東西 (全黑的對話框、空白就不是漏字)
+                              if (!gapBusy(src, mg, r.rect.left, r.rect.top - topOffset, r.rect.bottom - topOffset)) continue
+                              leftMiss = true
+                              val pre = try {
+                                  recoverLeft(src, topOffset, mg, r)
+                              } catch (e: Throwable) {
+                                  null
+                              }
+                              if (pre != null) {
+                                  val firstB = blocks.filter { x -> Math.abs(x.rect.centerY() - r.rect.centerY()) <= maxOf(x.lineH, r.lineH) / 2 }
+                                      .minByOrNull { x -> x.rect.left }
+                                  if (firstB != null) {
+                                      firstB.text = pre + firstB.text
+                                      firstB.rect.union(mg, firstB.rect.top, firstB.rect.right, firstB.rect.bottom)
+                                  }
+                              }
+                          }
+                      }
+                      noteLefts(rowsL, src.width)
+                  }
+
                   val out = ArrayList<ResultView.Item>()
                   val merged = merge(blocks)
                   if (auto) {
@@ -4224,7 +4292,7 @@ jobs:
                       if (m.text.length < 2) continue
                       // 只有角色名字、或太短的碎字 (狀態欄的名字、畫面雜訊) 不當對話翻
                       if (auto && (SpellGuide.onlyNames(m.text) || (m.text.length < 4 && m.text.last() !in "。！？!?」』♪♥♡…~～"))) continue
-                      if (auto && merged.size == 1 && engine == "smart") rememberCrop(m.text, src)
+                      if (auto && merged.size == 1 && engine == "smart") rememberCrop(m.text, src, leftMiss)
                       if (auto && merged.size == 1) {
                           // 自動模式:辨識完先把整句日文記下來,翻譯丟到背景,辨識不用等翻譯 (也不會因為辨識多吃翻譯次數)
                           out.add(ResultView.Item(m.rect, cacheGet(if (engine == "aiv") "ai" else engine, m.text) ?: "", m.lineH, m.text))
@@ -4246,7 +4314,7 @@ jobs:
               private var lastTrMs = 0L
 
               // 譯文框保留最近 10 段對話,框內可上下滑動看前後文
-              private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0, var page: Int = 0)
+              private class Hist(var orig: String, var zh: String, var at: Long = SystemClock.uptimeMillis(), var tries: Int = 0, var page: Int = 0, var ai: Boolean = false)
               @Volatile
               private var pageSerial = 0
               // 每一張排隊辨識的畫面,記住它是「第幾頁」對白。辨識完成時 (可能已經晚了好幾頁) 用它來判斷,不能用「當下」的頁碼
@@ -4302,7 +4370,8 @@ jobs:
                       val mn = minOf(bo.size, bl.size)
                       val contain = if (mn > 0) bo.count { x -> bl.contains(x) }.toFloat() / mn else 0f
                       if (contain >= 0.3f) {
-                          if (sO.length >= sL.length - 2) {
+                          // 已經由 AI 看圖讀過整句的,不要被後來的辨識結果 (常常又缺開頭) 蓋掉
+                          if (!last.ai && sO.length >= sL.length - 2) {
                               last.orig = orig
                               last.zh = zh
                               last.at = SystemClock.uptimeMillis()
@@ -4498,7 +4567,23 @@ jobs:
                       return
                   }
                   // 畫面大幅改變 (按了下一句、整句消失):上一個畫面還沒辨識的最後一張,先排進辨識佇列,不能丟掉
-                  val bigChange = prev == null || prev.size != sig.size || sigDiff(prev, sig) > 120
+                  // 另外:很短的一句 (像「……はい。」) 換成下一句時,變化的格子不多,以前會被當成「同一頁」;
+                  // 改成也看「原本有字的地方,字消失了」:逐字長出來只會多字、不會少字,有一大片字消失就是換頁了
+                  var flip = false
+                  val base = pageBaseSig
+                  if (prev != null && base != null && base.size == sig.size && prev.size == sig.size) {
+                      var textPrev = 0
+                      var removed = 0
+                      for (i in sig.indices) {
+                          if (Math.abs(prev[i] - base[i]) > 40) {
+                              textPrev++
+                              if (Math.abs(sig[i] - base[i]) <= 20) removed++
+                          }
+                      }
+                      flip = removed >= 12 && removed * 100 >= textPrev * 30
+                  }
+                  val bigChange = prev == null || prev.size != sig.size || flip || sigDiff(prev, sig) > 120
+                  if (bigChange) pageBaseSig = sig
                   if (bigChange && !lastWasSpell && helpBoxRect == null) {
                       val nowT = SystemClock.uptimeMillis()
                       val gap = nowT - statLastChangeAt
@@ -4508,36 +4593,42 @@ jobs:
                           statGapN++
                       }
                       statLastChangeAt = nowT
-                      // 優先用「換頁瞬間最乾淨的那一張」,沒有才用新頁的第一張
+                      // 背景用「換頁瞬間最乾淨的那一張」,而且要確認它真的沒有字:
+                      // 以前抓不到乾淨的就拿新一頁的第一張當背景,那張常常已經打出開頭兩三個字,
+                      // 相減後開頭的字就被減掉了 (每個場景第一頁、靠樓梯那邊開頭的字最常漏,就是這個原因)
                       val cl = cleanPx
-                      val cleanOk = cl != null && cleanW == crop.width && SystemClock.uptimeMillis() - cleanAt <= 1500L &&
+                      var cleanOk = cl != null && cleanW == crop.width && SystemClock.uptimeMillis() - cleanAt <= 1500L &&
                           cl.size == crop.width * (crop.height - bgY0(crop.height, top))
-                      val newRef = if (cleanOk) cl else grabBand(crop, top)
-                      pageRef = newRef
                       val oldS = settleCrop
                       val old = oldS ?: latestCrop
+                      val oldBand = if (old != null) grabBand(old, latestTop) else lastFinalBand
+                      if (cleanOk && cl != null) {
+                          val curBand = grabBand(crop, top)
+                          // 淡入淡出的暗畫面、換了場景:跟這一頁差太多,不能當背景 (換人物頭像那幾列不算在內)
+                          if (curBand == null || bandDiff(cl, curBand, crop.width) > 0.25f) cleanOk = false
+                          // 還是上一頁的字 (換頁那一瞬間沒抓到空白的那張):跟上一頁最後一張幾乎一樣,也不能當背景
+                          if (cleanOk && oldBand != null && oldBand.size == cl.size && bandDiff(cl, oldBand, crop.width) < 0.004f) cleanOk = false
+                      }
+                      val newRef = if (cleanOk) cl else null
+                      pageRef = newRef
+                      val cw = crop.width
+                      if (cleanOk && newRef != null) {
+                          val nr: IntArray = newRef
+                          bgHandler.post { bgAddPx(nr, cw, nr.size / cw) }
+                      } else if (oldBand != null) {
+                          // 沒有乾淨背景時,用上一頁講完的那張累積「中間值背景」(字的位置每頁不同,取中間值就是背景)
+                          val ob: IntArray = oldBand
+                          bgHandler.post { bgAddPx(ob, cw, ob.size / cw) }
+                      }
+                      lastFinalBand = null
                       if (old != null) {
                           if (oldS != null) {
                               latestCrop?.recycle()
                               settleCrop = null
-                          } else {
-                              // latestCrop 就是 old
                           }
                           latestCrop = null
-                          val cw = crop.width
-                          if (cleanOk && newRef != null) {
-                              val nr: IntArray = newRef
-                              bgHandler.post { bgAddPx(nr, cw, nr.size / cw) }
-                          } else {
-                              bgAdd(old, latestTop)
-                          }
                           refPut(old, newRef)
-                          markSerial(old, pageSerial)
-                          autoQueue.addLast(Pair(old, latestTop))
-                          while (autoQueue.size > 8) {
-                      autoQueue.removeFirst().first.recycle()
-                      statDrops++
-                  }
+                          enqueueFrame(old, latestTop, pageSerial, true)
                           ui.post { drainAuto() }
                       }
                   }
@@ -4553,19 +4644,8 @@ jobs:
                   if (!lastWasSpell && helpBoxRect == null) {
                       // 對話:每一張有變化的畫面都直接排進辨識佇列 (辨識一張只要 0.2~0.5 秒),
                       // 只有 0.1 秒內連續的逐字畫面才合併,所以「這句講完那一刻」的畫面不會被下一句蓋掉
-                      val nowQ = SystemClock.uptimeMillis()
-                      if (autoQueue.isNotEmpty() && nowQ - slotAt < 100) {
-                          autoQueue.pollLast().first.recycle()
-                      } else {
-                          slotAt = nowQ
-                      }
-                      if (!bigChange) refPut(crop, pageRef)
-                      markSerial(crop, pageSerial)
-                      autoQueue.addLast(Pair(crop, top))
-                      while (autoQueue.size > 8) {
-                          autoQueue.removeFirst().first.recycle()
-                          statDrops++
-                      }
+                      refPut(crop, pageRef)
+                      enqueueFrame(crop, top, pageSerial)
                       if (!autoBusy && !busy) drainAuto()
                       return
                   }
@@ -4708,18 +4788,40 @@ jobs:
                   }
               }
 
-              private fun runAuto() {
+              private fun runAuto(fin: Boolean = false) {
                   val c0 = latestCrop ?: return
                   latestCrop = null
                   // 魔法選單 / HELP 開著的時候只看最新的畫面,舊的不用排隊 (排隊會讓說明晚很久才出來)
                   if (lastWasSpell || helpBoxRect != null) clearAutoQueue()
-                  markSerial(c0, pageSerial)
-                  autoQueue.addLast(Pair(c0, latestTop))
-                  while (autoQueue.size > 8) {
-                      autoQueue.removeFirst().first.recycle()
+                  enqueueFrame(c0, latestTop, pageSerial, fin && !lastWasSpell && helpBoxRect == null)
+                  drainAuto()
+              }
+
+              // 排進辨識佇列:同一頁對白只留「最新的一張」(逐字長出來的舊畫面沒用了,直接換掉),
+              // 不同頁的各自保留。這樣你連按好幾句時,每一句「講完那一刻」的畫面都一定會被辨識到,不會被擠掉
+              // 「講完那一刻」的畫面 (停住的那張、換頁前最後一張):一定要辨識,不會被同一頁後來的畫面換掉
+              private val finalFrames = java.util.Collections.newSetFromMap(java.util.WeakHashMap<Bitmap, Boolean>())
+
+              private fun enqueueFrame(b: Bitmap, top: Int, serial: Int, fin: Boolean = false) {
+                  markSerial(b, serial)
+                  if (fin) finalFrames.add(b)
+                  val itq = autoQueue.iterator()
+                  while (itq.hasNext()) {
+                      val x = itq.next()
+                      val s = synchronized(serialFor) { serialFor[x.first] }
+                      if (s == serial && !finalFrames.contains(x.first)) {
+                          itq.remove()
+                          synchronized(serialFor) { serialFor.remove(x.first) }
+                          x.first.recycle()
+                      }
+                  }
+                  autoQueue.addLast(Pair(b, top))
+                  while (autoQueue.size > 16) {
+                      val x = autoQueue.removeFirst()
+                      synchronized(serialFor) { serialFor.remove(x.first) }
+                      x.first.recycle()
                       statDrops++
                   }
-                  drainAuto()
               }
 
               private fun drainAuto() {
@@ -4851,7 +4953,8 @@ jobs:
                       why.append("辨識可能有錯字 ")
                   }
                   // 句子開頭是不可能開頭的字 (長音、小假名、句號、を…) = 開頭幾個字沒讀到,直接請 AI 看圖補
-                  if (Regex("^[ーっッゃゅょャュョぁぃぅぇぉァィゥェォ、。を]").containsMatchIn(jp)) {
+                  if (Regex("^[ーっッゃゅょャュョぁぃぅぇぉァィゥェォ、。を]").containsMatchIn(jp) || cropLeftMiss(jp)) {
+                      // (第二種:辨識時發現這一行的開頭離左邊界還差一截,開頭的字八成沒讀到)
                       hard = true
                       why.append("辨識可能缺開頭 ")
                   }
@@ -4996,7 +5099,7 @@ jobs:
                           val crop = cropFor(jp)
                           if (crop != null) {
                               val v = try {
-                                  visionCall(crop)
+                                  visionCall(crop, if (why.contains("缺開頭")) jp else null)
                               } finally {
                                   crop.recycle()
                               }
@@ -5019,7 +5122,10 @@ jobs:
                   for (h in history) {
                       if (h.zh.contains(old)) {
                           h.zh = h.zh.replace(old, ai)
-                          if (newOrig != null && newOrig.isNotBlank()) h.orig = newOrig
+                          if (newOrig != null && newOrig.isNotBlank()) {
+                              h.orig = newOrig
+                              h.ai = true
+                          }
                           changed = true
                       }
                   }
@@ -5206,7 +5312,7 @@ jobs:
               private class Cand(val v: Int, val blk: Blk)
 
               // 把所有版本辨識到的「行」依高度分成幾列,每一列只採用字數最多的那個版本,避免不同版本的碎片拼成亂碼
-              private fun pickBestRows(cands: List<Cand>): ArrayList<Blk> {
+              private fun pickBestRows(cands: List<Cand>, margin: Int? = null): ArrayList<Blk> {
                   val sorted = cands.sortedBy { c -> c.blk.rect.centerY() }
                   val rows = ArrayList<ArrayList<Cand>>()
                   for (c in sorted) {
@@ -5244,13 +5350,74 @@ jobs:
                           }
                       }
                       // 背景相減版本的字最乾淨:只要讀到的量有最好版本的 6 成,就用它 (別的版本字數多常常是背景雜訊讀出來的亂字)
-                      val sBg = score[4] ?: 0
-                      if (sBg > 0 && sBg * 10 >= bestS * 6) bestV = 4
-                      for (c in row.filter { x -> x.v == bestV }.sortedBy { x -> x.blk.rect.left }) {
-                          out.add(c.blk)
+                      // 但如果它的開頭比別的版本少了一截 (當背景的那張剛好已經打出開頭的字,開頭就被減掉了),就不偏向它
+                      val lh = row.maxOf { x -> x.blk.lineH }
+                      val leftOf = HashMap<Int, Int>()
+                      for (c in row) {
+                          if (c.blk.rect.left < (leftOf[c.v] ?: Int.MAX_VALUE)) leftOf[c.v] = c.blk.rect.left
                       }
+                      val sBg = score[4] ?: 0
+                      if (sBg > 0 && sBg * 10 >= bestS * 6) {
+                          val lBg = leftOf[4] ?: Int.MAX_VALUE
+                          var lOther = Int.MAX_VALUE
+                          // (比對話左邊界還左邊很多的,是樓梯花紋被認成字,不算)
+                          val lMin = if (margin != null) margin - lh * 7 / 10 else Int.MIN_VALUE
+                          for ((k, l) in leftOf) {
+                              if (k != 4 && (score[k] ?: 0) * 10 >= bestS * 4 && l >= lMin && l < lOther) lOther = l
+                          }
+                          if (lOther == Int.MAX_VALUE || lBg - lOther < lh * 8 / 10) bestV = 4
+                      }
+                      val chosen = ArrayList(row.filter { x -> x.v == bestV }.sortedBy { x -> x.blk.rect.left }.map { x -> x.blk })
+                      if (chosen.isNotEmpty() && margin != null) stitchLeft(chosen, row.filter { x -> x.v != bestV }, margin, lh)
+                      out.addAll(chosen)
                   }
                   return out
+              }
+
+              // 選到的版本開頭少了一截 (離對話的左邊界還有一個字以上),別的版本有讀到那一段的話,把那一段接到前面
+              private fun stitchLeft(chosen: ArrayList<Blk>, others: List<Cand>, margin: Int, lh: Int) {
+                  val first = chosen[0]
+                  val lB = first.rect.left
+                  if (lB - margin < lh * 9 / 10) return
+                  var best: Blk? = null
+                  for (c in others) {
+                      val o = c.blk
+                      // 一定要從對話的左邊界附近開始 (左邊樓梯的花紋被認成字的不算)
+                      if (Math.abs(o.rect.left - margin) > lh * 7 / 10) continue
+                      if (o.rect.left > lB - lh * 8 / 10) continue
+                      if (best == null || o.rect.left < best.rect.left) best = o
+                  }
+                  val o = best ?: return
+                  val jpN = { s: String -> s.count { ch -> ch in '\u3040'..'\u30FF' || ch in '\u4E00'..'\u9FFF' } }
+                  if (o.rect.right <= lB + lh / 2) {
+                      // 一小段在左邊、跟選到的那段沒有重疊:中間不能隔太遠
+                      if (lB - o.rect.right > lh * 2) return
+                      if (jpN(o.text) < 1) return
+                      first.text = o.text + first.text
+                      first.rect.union(o.rect)
+                      return
+                  }
+                  // 別的版本整行都讀到了 (比較長):依字寬估計多出來的開頭是哪幾個字,而且接下來的字要對得上才接
+                  val n = o.text.length
+                  if (n < 3) return
+                  val cw = o.rect.width().toFloat() / n
+                  if (cw <= 0f) return
+                  val k0 = Math.round((lB - o.rect.left) / cw)
+                  for (k in intArrayOf(k0, k0 - 1, k0 + 1)) {
+                      if (k < 1 || k >= n) continue
+                      val rest = o.text.substring(k)
+                      val m = minOf(3, rest.length, first.text.length)
+                      if (m < 2) continue
+                      var same = 0
+                      for (i in 0 until m) if (rest[i] == first.text[i]) same++
+                      if (same * 3 >= m * 2) {
+                          val pre = o.text.substring(0, k)
+                          if (jpN(pre) < 1) return
+                          first.text = pre + first.text
+                          first.rect.union(o.rect.left, first.rect.top, first.rect.right, first.rect.bottom)
+                          return
+                      }
+                  }
               }
 
               // 找字邊的深色外框 (黑字白底):比周圍小方塊平均暗一截的點才算
@@ -5266,6 +5433,39 @@ jobs:
                   Math.abs(((a shr 16) and 0xFF) - ((b shr 16) and 0xFF)) +
                       Math.abs(((a shr 8) and 0xFF) - ((b shr 8) and 0xFF)) +
                       Math.abs((a and 0xFF) - (b and 0xFF))
+
+              // 兩張字幕區相差的比例。換了人物頭像的那幾列 (整列一半以上都不一樣) 不算;
+              // 一半以上的列都整列不一樣 = 淡入淡出或換了場景,回傳 1
+              private fun bandDiff(a: IntArray, b: IntArray, w: Int): Float {
+                  if (a.size != b.size || w <= 0) return 1f
+                  val h = a.size / w
+                  var rows = 0
+                  var heavy = 0
+                  var n = 0
+                  var d = 0
+                  var y = 0
+                  while (y < h) {
+                      var rn = 0
+                      var rd = 0
+                      var x = 0
+                      val off = y * w
+                      while (x < w) {
+                          rn++
+                          if (colDiff(a[off + x], b[off + x]) > 60) rd++
+                          x += 4
+                      }
+                      rows++
+                      if (rd * 2 > rn) {
+                          heavy++
+                      } else {
+                          n += rn
+                          d += rd
+                      }
+                      y += 3
+                  }
+                  if (rows == 0 || heavy * 2 > rows || n == 0) return 1f
+                  return d.toFloat() / n
+              }
 
               // 每換一頁對白,把上一頁定格的那張存起來;不同句的字位置不同,取每個點的中間值就是沒有字的背景
               // 魔法選單模式時截圖會往上延伸到整個畫面 (有人物頭像,每句都不一樣),背景只用對白那一段 (下半)
@@ -5457,7 +5657,8 @@ jobs:
                   try {
                       val y0 = bgY0(src.height, topOffset)
                       val pr = refTake(src)
-                      val med0 = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L) bgMed else null }
+                      // 這一頁有確認過沒有字的乾淨背景時,累積還不多 (少於 5 張) 的中間值背景反而比較不準 (容易殘留舊字),先用這一頁的
+                      val med0 = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L && (pr == null || bgSamples.size >= 5)) bgMed else null }
                       val med = med0 ?: pr ?: return null
                       val w = src.width
                       val h = src.height
@@ -5473,6 +5674,19 @@ jobs:
                       for (i in px.indices) {
                           if (colDiff(px[i], med[i]) > 28) m[i] = 1
                       }
+                      // 人物頭像換了 (頭像下緣也在字幕區裡):那幾列整列一半以上都不一樣,不是字,整列清掉就好,
+                      // 以前會因為這樣整張不用,剛好就是換人講話的那幾頁沒有背景相減可用
+                      var heavyRows = 0
+                      for (yy in 0 until bh) {
+                          var rc = 0
+                          val off = yy * w
+                          for (xx in 0 until w) if (m[off + xx].toInt() != 0) rc++
+                          if (rc * 2 > w) {
+                              heavyRows++
+                              java.util.Arrays.fill(m, off, off + w, 0.toByte())
+                          }
+                      }
+                      if (heavyRows * 2 > bh) return null
                       m = morphClose(m, w, bh, 2)
                       var cnt = 0
                       val out = IntArray(w * h)
@@ -5484,7 +5698,8 @@ jobs:
                           }
                       }
                       // 幾乎沒有字,或一大半都不一樣 (場景換了):這個版本不用
-                      if (cnt * 1000 < px.size * 3 || cnt * 100 > px.size * 20) return null
+                      val live = (bh - heavyRows).toLong() * w
+                      if (cnt * 1000L < live * 3 || cnt * 100L > live * 20) return null
                       val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                       bm.setPixels(out, 0, w, 0, 0, w, h)
                       val sw = (w * scale).toInt()
@@ -5584,44 +5799,214 @@ jobs:
               }
 
               // 最近幾句對白的截圖 (辨識出的文字 -> 圖),背景檢查發現辨識可能讀錯時,拿來請 AI 直接看圖
-              private val cropStore = ArrayList<Pair<String, Bitmap>>()
+              private class CropRec(val text: String, val bmp: Bitmap, val leftMiss: Boolean)
 
-              private fun rememberCrop(text: String, src: Bitmap) {
+              private val cropStore = ArrayList<CropRec>()
+
+              private fun rememberCrop(text: String, src: Bitmap, leftMiss: Boolean = false) {
                   try {
-                      val c = src.copy(Bitmap.Config.ARGB_8888, false) ?: return
                       synchronized(cropStore) {
-                          cropStore.add(0, Pair(text, c))
-                          while (cropStore.size > 4) cropStore.removeAt(cropStore.size - 1).second.recycle()
+                          // 同一句逐字長出來的新畫面:換掉舊的那張,不要一句佔好幾格 (你連按好幾句時,前幾句的圖才不會被擠掉)
+                          val head = cropStore.firstOrNull()
+                          if (head != null && (text.startsWith(head.text) || sameSentence(text, head.text))) {
+                              cropStore.removeAt(0).bmp.recycle()
+                          }
+                          val c = src.copy(Bitmap.Config.ARGB_8888, false) ?: return
+                          cropStore.add(0, CropRec(text, c, leftMiss))
+                          while (cropStore.size > 6) cropStore.removeAt(cropStore.size - 1).bmp.recycle()
                       }
-                  } catch (e: Exception) {
+                  } catch (e: Throwable) {
                       // 記憶體不夠就算了
                   }
               }
 
-              private fun cropFor(jp: String): Bitmap? {
+              // 呼叫的地方要先鎖住 cropStore
+              private fun bestCrop(jp: String): CropRec? {
                   val a = jp.filter { c -> c.isLetterOrDigit() }
-                  var best: Bitmap? = null
+                  var best: CropRec? = null
                   var bs = Int.MAX_VALUE
-                  synchronized(cropStore) {
-                      for (e in cropStore) {
-                          val b = e.first.filter { c -> c.isLetterOrDigit() }
-                          val d = levDist(a, b)
-                          if (d < bs && d <= maxOf(3, maxOf(a.length, b.length) / 2)) {
-                              bs = d
-                              best = e.second.copy(Bitmap.Config.ARGB_8888, false)
-                          }
+                  for (e in cropStore) {
+                      val b = e.text.filter { c -> c.isLetterOrDigit() }
+                      val d = levDist(a, b)
+                      if (d < bs && d <= maxOf(3, maxOf(a.length, b.length) / 2)) {
+                          bs = d
+                          best = e
                       }
                   }
                   return best
               }
 
+              private fun cropFor(jp: String): Bitmap? = synchronized(cropStore) {
+                  try {
+                      bestCrop(jp)?.bmp?.copy(Bitmap.Config.ARGB_8888, false)
+                  } catch (e: Throwable) {
+                      null
+                  }
+              }
+
+              // 這一句辨識時發現開頭離左邊界還差一截 (開頭的字可能沒讀到)
+              private fun cropLeftMiss(jp: String): Boolean = synchronized(cropStore) { bestCrop(jp)?.leftMiss ?: false }
+
+              // ---- 對話的左邊界 ----
+              // 遊戲的對話都靠左對齊,每一行從同一個位置開始。記住最近 40 行的開頭位置,最多的那個位置就是左邊界
+              private val leftHist = java.util.ArrayDeque<Int>()
+              private var leftHistW = 0
+
+              private fun noteLefts(rows: List<Blk>, w: Int) {
+                  synchronized(leftHist) {
+                      if (w != leftHistW) {
+                          leftHist.clear()
+                          leftHistW = w
+                      }
+                      for (b in rows) {
+                          val n = b.text.count { c -> c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF' }
+                          if (n < 5) continue
+                          leftHist.addLast(b.rect.left)
+                          while (leftHist.size > 40) leftHist.removeFirst()
+                      }
+                  }
+              }
+
+              private fun dialogLeft(w: Int): Int? {
+                  val prefs = getSharedPreferences("cfg", Context.MODE_PRIVATE)
+                  synchronized(leftHist) {
+                      // 剛開始還沒累積幾行:用上次記住的左邊界 (每個場景第一頁才也能檢查)
+                      if (w != leftHistW || leftHist.size < 5) return prefs.getInt("dlg_left_" + w, -1).takeIf { x -> x >= 0 }
+                      val tol = maxOf(6, w / 90)
+                      var best = -1
+                      var bestN = 0
+                      for (x in leftHist) {
+                          val n = leftHist.count { y -> Math.abs(y - x) <= tol }
+                          if (n > bestN || (n == bestN && x < best)) {
+                              best = x
+                              bestN = n
+                          }
+                      }
+                      // 要有 4 成以上的行都從這裡開始,才算數
+                      if (bestN < 4 || bestN * 10 < leftHist.size * 4) return prefs.getInt("dlg_left_" + w, -1).takeIf { x -> x >= 0 }
+                      val res = leftHist.filter { y -> Math.abs(y - best) <= tol }.minOrNull() ?: return null
+                      if (prefs.getInt("dlg_left_" + w, -1) != res) prefs.edit().putInt("dlg_left_" + w, res).apply()
+                      return res
+                  }
+              }
+
+              // 左邊那一段有沒有東西 (有線條)。全黑的對話框、空白的天空就沒有
+              private fun gapBusy(src: Bitmap, x0: Int, x1: Int, y0: Int, y1: Int): Boolean {
+                  val a = maxOf(0, x0)
+                  val b = minOf(src.width, x1)
+                  val t = maxOf(0, y0)
+                  val bt = minOf(src.height, y1)
+                  if (b - a < 4 || bt - t < 4) return false
+                  val w = b - a
+                  val h = bt - t
+                  val px = IntArray(w * h)
+                  src.getPixels(px, 0, w, a, t, w, h)
+                  var e = 0L
+                  var n = 0L
+                  for (y in 0 until h) {
+                      val off = y * w
+                      for (x in 1 until w) {
+                          e += Math.abs(((px[off + x] shr 8) and 0xFF) - ((px[off + x - 1] shr 8) and 0xFF))
+                          n++
+                      }
+                  }
+                  return n > 0 && e >= n * 6
+              }
+
+              // 只把左邊漏掉的那一小段剪下來,放大三倍、換幾種處理方式再讀一次。字數要跟空出來的寬度差不多才採用
+              private fun recoverLeft(src: Bitmap, topOffset: Int, mg: Int, row: Blk): String? {
+                  val rec = recognizer ?: return null
+                  val lh = maxOf(8, row.lineH)
+                  val x0 = maxOf(0, mg - lh / 3)
+                  val x1 = minOf(src.width, row.rect.left - 1)
+                  val y0 = maxOf(0, row.rect.top - topOffset - lh / 4)
+                  val y1 = minOf(src.height, row.rect.bottom - topOffset + lh / 4)
+                  if (x1 - x0 < lh / 2 || y1 - y0 < 8) return null
+                  val expect = maxOf(1, Math.round((row.rect.left - mg).toFloat() / lh))
+                  val piece = Bitmap.createBitmap(src, x0, y0, x1 - x0, y1 - y0)
+                  val vars = ArrayList<Bitmap>()
+                  try {
+                      vars.add(padWhite(inkMask(piece, 3f), lh))
+                      vars.add(padWhite(goldMask(piece, 3f), lh))
+                      vars.add(enhance(piece, 3f, 2.2f))
+                  } finally {
+                      if (piece !== src) piece.recycle()
+                  }
+                  var best: String? = null
+                  var bestN = 0
+                  try {
+                      val jobs = vars.map { v ->
+                          try {
+                              rec.process(InputImage.fromBitmap(v, 0))
+                          } catch (e: Exception) {
+                              null
+                          }
+                      }
+                      for (job in jobs) {
+                          if (job == null) continue
+                          val t = try {
+                              Tasks.await(job, 6, TimeUnit.SECONDS)
+                          } catch (e: Exception) {
+                              null
+                          } ?: continue
+                          var s = t.text.replace("\n", "").replace(" ", "").replace("　", "")
+                          s = s.filter { c -> !c.isLetterOrDigit() || c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF' }
+                          s = s.filter { c -> c !in "*|[]{}<>=+_~^#@%&/\\`\$\"'" }
+                          val n = s.count { c -> c in '\u3040'..'\u30FF' || c in '\u4E00'..'\u9FFF' }
+                          // 大部分要是日文字,字數也要跟空出來的寬度差不多 (樓梯花紋被認成一兩個怪字的不要)
+                          if (n < maxOf(1, expect - 1) || n * 10 < s.length * 6) continue
+                          if (s.length > expect + 1 || s.length < maxOf(1, expect - 1)) continue
+                          if (n > bestN) {
+                              best = s
+                              bestN = n
+                          }
+                      }
+                  } finally {
+                      for (v in vars) v.recycle()
+                  }
+                  return best
+              }
+
+              private fun padWhite(b: Bitmap, pad: Int): Bitmap {
+                  val out = Bitmap.createBitmap(b.width + pad * 2, b.height + pad * 2, Bitmap.Config.ARGB_8888)
+                  val cv = Canvas(out)
+                  cv.drawColor(0xFFFFFFFF.toInt())
+                  cv.drawBitmap(b, pad.toFloat(), pad.toFloat(), null)
+                  b.recycle()
+                  return out
+              }
+
+              // 只留下「暗的土黃色」(黑字白底):亮色場景 (石階、石板路) 上,字只剩深褐色的外框看得清楚,用顏色把外框挑出來
+              private fun inkMask(src: Bitmap, scale: Float): Bitmap {
+                  val w = maxOf(1, (src.width * scale).toInt())
+                  val h = maxOf(1, (src.height * scale).toInt())
+                  val scaled = Bitmap.createScaledBitmap(src, w, h, true)
+                  val px = IntArray(w * h)
+                  scaled.getPixels(px, 0, w, 0, 0, w, h)
+                  if (scaled !== src) scaled.recycle()
+                  val black = 0xFF000000.toInt()
+                  val white = 0xFFFFFFFF.toInt()
+                  for (i in px.indices) {
+                      val c = px[i]
+                      val r = (c shr 16) and 0xFF
+                      val g = (c shr 8) and 0xFF
+                      val b = c and 0xFF
+                      val lum = (r * 30 + g * 59 + b * 11) / 100
+                      val yel = (r + g) / 2 - b
+                      px[i] = if (yel >= 30 && lum < 118) black else white
+                  }
+                  val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                  out.setPixels(px, 0, w, 0, 0, w, h)
+                  return out
+              }
+
               // 請 AI 直接看圖讀出日文並翻譯 (只在辨識很可能讀錯時用,同樣受每分鐘次數限制)
-              private fun visionCall(bmp: Bitmap): Pair<String, String>? {
+              private fun visionCall(bmp: Bitmap, hint: String? = null): Pair<String, String>? {
                   val cfg = AiClient.config(applicationContext)
                   if (cfg == null || cfg.key.isEmpty()) return null
                   if (AiQuota.tryAcquire(applicationContext) != null) return null
                   return try {
-                      val r = AiClient.translateImage(applicationContext, bmp, aiHistory.toList()) ?: return null
+                      val r = AiClient.translateImage(applicationContext, bmp, aiHistory.toList(), hint) ?: return null
                       val fixed = Glossary.fix(applicationContext, r.second)
                       rememberAi(fixed)
                       Pair(r.first, fixed)
@@ -6051,6 +6436,9 @@ jobs:
               // 清理一行辨識結果:狀態欄數字、背景亂碼整行丟掉;日文裡混進的英數字雜訊去掉
               private fun cleanLine(raw: String): String? {
                   var s = raw.replace(" ", "").replace("　", "")
+                  // 遊戲的「……」是一排小方塊,常被認成 □■口ロ 或一串點:先換回「……」
+                  s = s.replace(Regex("[□■▪▫◻◼◾◽口ロ]{3,}"), "……")
+                  s = s.replace(Regex("[·•・.．]{3,}"), "……")
                   var kana = 0
                   var kanji = 0
                   for (c in s) {
@@ -6058,7 +6446,10 @@ jobs:
                   }
                   val jpN = kana + kanji
                   if (jpN == 0) return s
-                  if (jpN * 10 < s.length * 6) return null
+                  // 標點 (……、。！？「」♪) 不算雜訊:以前「……はい。」這種短句會因為點點太多被整行丟掉,那一句就完全沒翻到
+                  val punct = "。、，,！？!?…‥・·•.．「」『』（）()♪♥♡～~"
+                  val body = s.count { c -> c !in punct }
+                  if (jpN * 10 < body * 6) return null
                   if (kana < 2 && kanji < 4) return null
                   val noise = "*|[]{}<>=+_~^#@%&/\\`\$"
                   val sb = StringBuilder()
