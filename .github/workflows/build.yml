@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 22
-                  versionName = "3.49"
+                  versionCode = 23
+                  versionName = "3.50"
               }
 
               buildTypes {
@@ -1681,7 +1681,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.49 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.50 (含 AI + 攻略,診斷版)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -4045,6 +4045,8 @@ jobs:
                   var helpRect: Rect? = null
                   var pageNoRaw: Int? = null
                   var pageTotalRaw: Int? = null
+                  // 診斷:每種版本各讀到什麼 (v0 原圖 v1 加強 v2 金色 v3 外框 v4 背景相減 v5 深色字)
+                  val dv = StringBuilder()
                   try {
                       // 4 種版本同時送去辨識,比一個一個等快很多
                       ui.post { setLabel("辨") }
@@ -4069,6 +4071,7 @@ jobs:
                           }
                           if (text == null) continue
                           raw.append(text.text.replace("\n", " ")).append(" | ")
+                          dv.append("  v").append(vi).append(": ").append(text.text.replace("\n", " / ")).append('\n')
                           for (b in text.textBlocks) {
                               for (ln in b.lines) {
                                   val box = ln.boundingBox ?: continue
@@ -4099,6 +4102,13 @@ jobs:
                                   cands.add(Cand(vi, Blk(r, jp, maxOf(1, r.height()))))
                               }
                           }
+                      }
+                      if (auto && !menuFrame && diagOn()) {
+                          diagShot++
+                          val tag = String.format("p%03d_ocr%04d", pageSerial, diagShot)
+                          diagNote("OCR " + tag + " bg=" + lastBgSrc + "\n" + dv.toString().trimEnd())
+                          diagPng(tag + "_v0.png", src)
+                          if (variants.size > 4 && variants[4].first.width >= 8) diagPng(tag + "_v4bg.png", variants[4].first)
                       }
                   } finally {
                       for (v in variants) {
@@ -4277,6 +4287,7 @@ jobs:
                       noteLefts(rowsL, src.width)
                   }
 
+                  if (auto && !menuFrame) diagNote("RESULT leftMiss=" + leftMiss + " margin=" + dialogLeft(src.width) + " text=" + blocks.sortedBy { x -> x.rect.top }.joinToString(" / ") { x -> x.text + "@x" + x.rect.left })
                   val out = ArrayList<ResultView.Item>()
                   val merged = merge(blocks)
                   if (auto) {
@@ -4597,25 +4608,45 @@ jobs:
                       // 以前抓不到乾淨的就拿新一頁的第一張當背景,那張常常已經打出開頭兩三個字,
                       // 相減後開頭的字就被減掉了 (每個場景第一頁、靠樓梯那邊開頭的字最常漏,就是這個原因)
                       val cl = cleanPx
-                      var cleanOk = cl != null && cleanW == crop.width && SystemClock.uptimeMillis() - cleanAt <= 1500L &&
+                      val clAge = SystemClock.uptimeMillis() - cleanAt
+                      var cleanOk = cl != null && cleanW == crop.width && clAge <= 1500L &&
                           cl.size == crop.width * (crop.height - bgY0(crop.height, top))
+                      val dg = StringBuilder("PAGE ").append(pageSerial + 1).append(" flip=").append(flip)
+                          .append(" clean=").append(if (cl == null) "none" else "w" + cleanW + "/crop" + crop.width + " age" + clAge + "ms")
                       val oldS = settleCrop
                       val old = oldS ?: latestCrop
                       val oldBand = if (old != null) grabBand(old, latestTop) else lastFinalBand
                       if (cleanOk && cl != null) {
                           val curBand = grabBand(crop, top)
                           // 淡入淡出的暗畫面、換了場景:跟這一頁差太多,不能當背景 (換人物頭像那幾列不算在內)
-                          if (curBand == null || bandDiff(cl, curBand, crop.width) > 0.25f) cleanOk = false
+                          val dCur = if (curBand == null) -1f else bandDiff(cl, curBand, crop.width)
+                          dg.append(" diff(clean,new)=").append(dCur)
+                          if (curBand == null || dCur > 0.25f) cleanOk = false
                           // 還是上一頁的字 (換頁那一瞬間沒抓到空白的那張):跟上一頁最後一張幾乎一樣,也不能當背景
                           // 例外:剛進場景時,畫面會先停在「沒有字的場景」約 0.5 秒,頭像和第一頁的字才出來。
                           // 這時「上一頁」就是那張沒有字的場景,跟乾淨背景當然一樣,以前也被丟掉,
                           // 所以每個場景第一頁都沒有背景可減,左邊樓梯上的開頭幾個字最常漏 (用你錄的影片模擬確認過)。
                           // 上一頁沒有辨識出對白,而且新的一頁線條沒有變少 (舊字消失線條會變少),就是這種情況,可以用
-                          if (cleanOk && curBand != null && oldBand != null && oldBand.size == cl.size && bandDiff(cl, oldBand, crop.width) < 0.004f) {
-                              val oldHadText = resultSerial == pageSerial
-                              val linesDropped = bandEdge(curBand, crop.width) * 100 < bandEdge(cl, crop.width) * 93
-                              if (oldHadText || linesDropped) cleanOk = false
+                          if (cleanOk && curBand != null && oldBand != null && oldBand.size == cl.size) {
+                              val dOld = bandDiff(cl, oldBand, crop.width)
+                              dg.append(" diff(clean,old)=").append(dOld)
+                              if (dOld < 0.004f) {
+                                  val oldHadText = resultSerial == pageSerial
+                                  val eNew = bandEdge(curBand, crop.width)
+                                  val eCl = bandEdge(cl, crop.width)
+                                  val linesDropped = eNew * 100 < eCl * 93
+                                  dg.append(" sameAsOld oldHadText=").append(oldHadText).append(" edge new/clean=").append(eNew).append('/').append(eCl)
+                                  if (oldHadText || linesDropped) cleanOk = false
+                              }
                           }
+                      }
+                      dg.append(" => ").append(if (cleanOk) "USE clean" else "no clean")
+                      diagNote(dg.toString())
+                      if (diagOn()) {
+                          val pn = pageSerial + 1
+                          if (cl != null && cleanW > 0) diagPx(String.format("p%03d_clean.png", pn), cl, cleanW)
+                          diagPng(String.format("p%03d_first.png", pn), crop)
+                          diagFlush()
                       }
                       val newRef = if (cleanOk) cl else null
                       pageRef = newRef
@@ -5475,6 +5506,77 @@ jobs:
                   return d.toFloat() / n
               }
 
+              // ---------------------------------------------------------------- 診斷紀錄 (v3.50)
+              // 每一頁:換頁那一刻抓到的「乾淨背景」、新一頁第一張、每次辨識的原圖和背景相減圖、
+              // 各版本讀到的日文、背景用了哪一種,都存到手機的「下載/SSDiag/開始時間」資料夾,傳給開發者分析
+              @Volatile
+              private var lastBgSrc = "none"
+              private var diagShot = 0
+              private var diagFiles = 0
+              private val diagLock = Any()
+              private val diagLog = StringBuilder()
+              private val diagSession: String = java.text.SimpleDateFormat("MMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+
+              private fun diagOn(): Boolean =
+                  diagFiles < 300 && getSharedPreferences("cfg", Context.MODE_PRIVATE).getBoolean("diag", true)
+
+              private fun diagNote(s: String) {
+                  if (!diagOn()) return
+                  val t = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+                  synchronized(diagLock) { diagLog.append(t).append(' ').append(s).append('\n') }
+              }
+
+              private fun diagWrite(name: String, mime: String, write: (java.io.OutputStream) -> Unit) {
+                  try {
+                      if (Build.VERSION.SDK_INT >= 29) {
+                          val cv = android.content.ContentValues()
+                          cv.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name)
+                          cv.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                          cv.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Download/SSDiag/" + diagSession)
+                          val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv) ?: return
+                          contentResolver.openOutputStream(uri)?.use { o -> write(o) }
+                      } else {
+                          val d = java.io.File(getExternalFilesDir(null), "SSDiag/" + diagSession)
+                          d.mkdirs()
+                          java.io.FileOutputStream(java.io.File(d, name)).use { o -> write(o) }
+                      }
+                  } catch (e: Throwable) {
+                      // 診斷失敗不影響翻譯
+                  }
+              }
+
+              private fun diagPng(name: String, b: Bitmap) {
+                  if (!diagOn() || b.isRecycled) return
+                  diagFiles++
+                  val c = try { b.copy(Bitmap.Config.ARGB_8888, false) } catch (e: Throwable) { null } ?: return
+                  bgHandler.post {
+                      diagWrite(name, "image/png") { o -> c.compress(Bitmap.CompressFormat.PNG, 100, o) }
+                      c.recycle()
+                  }
+              }
+
+              private fun diagPx(name: String, px: IntArray, w: Int) {
+                  if (!diagOn() || w <= 0 || px.size < w) return
+                  diagFiles++
+                  val b = try { Bitmap.createBitmap(px, w, px.size / w, Bitmap.Config.ARGB_8888) } catch (e: Throwable) { null } ?: return
+                  bgHandler.post {
+                      diagWrite(name, "image/png") { o -> b.compress(Bitmap.CompressFormat.PNG, 100, o) }
+                      b.recycle()
+                  }
+              }
+
+              private fun diagFlush() {
+                  val s = synchronized(diagLock) {
+                      val x = diagLog.toString()
+                      diagLog.setLength(0)
+                      x
+                  }
+                  if (s.isEmpty()) return
+                  diagFiles++
+                  val name = String.format("log_%04d.txt", diagFiles)
+                  bgHandler.post { diagWrite(name, "text/plain") { o -> o.write(s.toByteArray(Charsets.UTF_8)) } }
+              }
+
               // 字幕區的線條量 (跟 trackClean 同一種算法:綠色每 3 點的差,除以亮度)。有字的畫面線條多
               private fun bandEdge(px: IntArray, w: Int): Long {
                   if (w <= 3) return 0L
@@ -5690,9 +5792,11 @@ jobs:
               private fun bgMask(src: Bitmap, scale: Float, topOffset: Int): Bitmap? {
                   try {
                       val y0 = bgY0(src.height, topOffset)
+                      lastBgSrc = "none"
                       val pr = refTake(src)
                       // 這一頁有確認過沒有字的乾淨背景時,累積還不多 (少於 5 張) 的中間值背景反而比較不準 (容易殘留舊字),先用這一頁的
                       val med0 = synchronized(bgLock) { if (src.width == bgW && src.height - y0 == bgH && SystemClock.uptimeMillis() - bgLastAt < 90000L && (pr == null || bgSamples.size >= 5)) bgMed else null }
+                      lastBgSrc = if (med0 != null) "median" else if (pr != null) "pageClean" else "none"
                       val med = med0 ?: pr ?: return null
                       val w = src.width
                       val h = src.height
@@ -7024,6 +7128,9 @@ jobs:
 
               override fun onDestroy() {
                   destroyed = true
+                  // 停止翻譯時把還沒寫出去的診斷紀錄寫完
+                  val dlog = synchronized(diagLock) { diagLog.toString() }
+                  if (dlog.isNotEmpty()) diagWrite("log_end.txt", "text/plain") { o -> o.write(dlog.toByteArray(Charsets.UTF_8)) }
                   ui.removeCallbacksAndMessages(null)
                   hideWalk()
                   try {
