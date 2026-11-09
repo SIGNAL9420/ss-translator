@@ -48,8 +48,8 @@ jobs:
                   applicationId = "com.example.sstranslator"
                   minSdk = 26
                   targetSdk = 34
-                  versionCode = 21
-                  versionName = "3.48"
+                  versionCode = 22
+                  versionName = "3.49"
               }
 
               buildTypes {
@@ -1681,7 +1681,7 @@ jobs:
                   root.setPadding(dp(16), dp(16), dp(16), dp(16))
 
                   val title = TextView(this)
-                  title.text = "SS 日文即時翻譯 v3.48 (含 AI + 攻略)"
+                  title.text = "SS 日文即時翻譯 v3.49 (含 AI + 攻略)"
                   title.textSize = 22f
                   root.addView(title)
 
@@ -4607,7 +4607,15 @@ jobs:
                           // 淡入淡出的暗畫面、換了場景:跟這一頁差太多,不能當背景 (換人物頭像那幾列不算在內)
                           if (curBand == null || bandDiff(cl, curBand, crop.width) > 0.25f) cleanOk = false
                           // 還是上一頁的字 (換頁那一瞬間沒抓到空白的那張):跟上一頁最後一張幾乎一樣,也不能當背景
-                          if (cleanOk && oldBand != null && oldBand.size == cl.size && bandDiff(cl, oldBand, crop.width) < 0.004f) cleanOk = false
+                          // 例外:剛進場景時,畫面會先停在「沒有字的場景」約 0.5 秒,頭像和第一頁的字才出來。
+                          // 這時「上一頁」就是那張沒有字的場景,跟乾淨背景當然一樣,以前也被丟掉,
+                          // 所以每個場景第一頁都沒有背景可減,左邊樓梯上的開頭幾個字最常漏 (用你錄的影片模擬確認過)。
+                          // 上一頁沒有辨識出對白,而且新的一頁線條沒有變少 (舊字消失線條會變少),就是這種情況,可以用
+                          if (cleanOk && curBand != null && oldBand != null && oldBand.size == cl.size && bandDiff(cl, oldBand, crop.width) < 0.004f) {
+                              val oldHadText = resultSerial == pageSerial
+                              val linesDropped = bandEdge(curBand, crop.width) * 100 < bandEdge(cl, crop.width) * 93
+                              if (oldHadText || linesDropped) cleanOk = false
+                          }
                       }
                       val newRef = if (cleanOk) cl else null
                       pageRef = newRef
@@ -5465,6 +5473,32 @@ jobs:
                   }
                   if (rows == 0 || heavy * 2 > rows || n == 0) return 1f
                   return d.toFloat() / n
+              }
+
+              // 字幕區的線條量 (跟 trackClean 同一種算法:綠色每 3 點的差,除以亮度)。有字的畫面線條多
+              private fun bandEdge(px: IntArray, w: Int): Long {
+                  if (w <= 3) return 0L
+                  val h = px.size / w
+                  var e0 = 0L
+                  var lum = 0L
+                  var cnt = 0L
+                  var y = 0
+                  while (y < h) {
+                      val off = y * w
+                      var prev = (px[off] shr 8) and 0xFF
+                      var x = 3
+                      while (x < w) {
+                          val cur = (px[off + x] shr 8) and 0xFF
+                          e0 += Math.abs(cur - prev)
+                          lum += cur.toLong()
+                          cnt++
+                          prev = cur
+                          x += 3
+                      }
+                      y += 3
+                  }
+                  if (cnt == 0L) return 0L
+                  return e0 * 64 / maxOf(8L, lum / cnt)
               }
 
               // 每換一頁對白,把上一頁定格的那張存起來;不同句的字位置不同,取每個點的中間值就是沒有字的背景
